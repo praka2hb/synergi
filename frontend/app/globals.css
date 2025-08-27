@@ -407,3 +407,6 @@
 /* Clean fade-in animation */
 
 /* Clean styling complete - scrollbars handled globally in base layer */
+
+/* Import chat animations */
+@import "../styles/chat-animations.css";

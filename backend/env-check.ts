@@ -9,6 +9,7 @@ interface EnvConfig {
     POSTMARK_SERVER_TOKEN?: string;
     FROM_EMAIL?: string;
     DATABASE_URL: string;
+    GEMINI_API_KEY: string;
 }
 
 export function validateEnvironment(): EnvConfig {
@@ -17,6 +18,7 @@ export function validateEnvironment(): EnvConfig {
     // Required variables
     if (!process.env.JWT_SECRET) missing.push('JWT_SECRET');
     if (!process.env.DATABASE_URL) missing.push('DATABASE_URL');
+    if (!process.env.GEMINI_API_KEY) missing.push('GEMINI_API_KEY');
     
     // Optional but recommended for production
     const warnings: string[] = [];
@@ -40,6 +42,7 @@ export function validateEnvironment(): EnvConfig {
     console.log(`  - NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
     console.log(`  - DATABASE_URL: ${process.env.DATABASE_URL ? '✓ Set' : '✗ Missing'}`);
     console.log(`  - JWT_SECRET: ${process.env.JWT_SECRET ? '✓ Set' : '✗ Missing'}`);
+    console.log(`  - GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? '✓ Set' : '✗ Missing'}`);
     console.log(`  - POSTMARK_SERVER_TOKEN: ${process.env.POSTMARK_SERVER_TOKEN ? '✓ Set' : '✗ Missing'}`);
     console.log(`  - FROM_EMAIL: ${process.env.FROM_EMAIL || '✗ Missing'}`);
     
@@ -49,5 +52,6 @@ export function validateEnvironment(): EnvConfig {
         POSTMARK_SERVER_TOKEN: process.env.POSTMARK_SERVER_TOKEN,
         FROM_EMAIL: process.env.FROM_EMAIL,
         DATABASE_URL: process.env.DATABASE_URL!,
+        GEMINI_API_KEY: process.env.GEMINI_API_KEY!,
     };
 }
