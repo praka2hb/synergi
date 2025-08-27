@@ -40,7 +40,7 @@ router.post("/send", authMiddleware, async (req: Request, res: Response) => {
     let conversation;
 
     // Get or create conversation
-    if (conversationId) {
+    if (conversationId && conversationId !== null) {
       conversation = await prisma.conversation.findFirst({
         where: { 
           id: conversationId, 

@@ -21,7 +21,7 @@ export const SignIn = z.object({
 // Chat validation schemas
 export const sendMessageSchema = z.object({
   message: z.string().min(1).max(10000),
-  conversationId: z.uuid().optional(),
+  conversationId: z.uuid().optional().nullable(),
 });
 
 export const getMessagesSchema = z.object({
