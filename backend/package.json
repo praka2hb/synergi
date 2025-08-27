@@ -1,0 +1,32 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "bun --hot index.ts",
+    "start": "bun index.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@prisma/client": "^6.14.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/jsonwebtoken": "^9.0.10",
+    "axios": "^1.11.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "google-auth-library": "^10.3.0",
+    "hi-base32": "^0.5.1",
+    "jsonwebtoken": "^9.0.2",
+    "totp-generator": "^1.0.0",
+    "zod": "^4.1.1"
+  },
+  "devDependencies": {
+    "prisma": "^6.14.0"
+  }
+}
