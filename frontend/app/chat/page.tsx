@@ -11,6 +11,7 @@ import SynergiLogo from "@/components/synergi-logo"
 import { AuthModal } from "@/components/auth-modal"
 import { useAuth } from "@/hooks/use-auth"
 import config from "@/lib/config"
+import { MarkdownMessage } from "@/components/markdown-message"
 
 interface Message {
   id: string
@@ -139,7 +140,13 @@ export default function ChatPage() {
   }
 
   const handleSendMessage = useCallback(async () => {
-    if (!inputValue.trim() || isStreaming || !token) return
+    if (!inputValue.trim() || isStreaming) return
+
+    // If user is not authenticated, show signin modal
+    if (!isAuthenticated || !token) {
+      setIsModalOpen(true)
+      return
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -299,26 +306,6 @@ export default function ChatPage() {
     setIsMobileSidebarOpen(false)
   }
 
-  if (!isAuthenticated) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-gray-100 dark:bg-neutral-800">
-              <div className="text-center space-y-6">
-        <SynergiLogo width={48} height={48} className="mx-auto" />
-        <div className="space-y-4">
-          <h1 className="text-xl font-medium text-gray-800 dark:text-white">Welcome to Synergi</h1>
-          <p className="text-sm text-gray-600 dark:text-gray-300">Please sign in to start chatting.</p>
-          <AuthModal>
-            <Button className="bg-gray-800 hover:bg-gray-900 dark:bg-gray-200 dark:hover:bg-gray-100 text-white dark:text-gray-900">
-              <LogIn className="w-4 h-4 mr-2" />
-              Sign In
-            </Button>
-          </AuthModal>
-        </div>
-      </div>
-      </div>
-    )
-  }
-
   return (
     <div
       className="h-screen relative flex bg-gray-100 text-gray-800 dark:bg-neutral-800 dark:text-white transition-colors overflow-hidden"
@@ -385,7 +372,7 @@ export default function ChatPage() {
           <div className="px-4 py-3 border-t border-gray-200/50 dark:border-neutral-700/50">
             <Button
               className={`${isMobileSidebarOpen || (!isMobileSidebarOpen && isSidebarOpen) ? "w-full justify-start" : "w-10 h-10 p-0"} 
-                    bg-gray-800 hover:bg-gray-900 dark:bg-gray-200 dark:hover:bg-gray-100 text-white dark:text-gray-900 border-0`}
+                    bg-teal-50 hover:bg-gray-50 text-gray-800 dark:bg-neutral-700 dark:hover:bg-neutral-600 dark:text-white border-0`}
               onClick={(e) => {
                 e.stopPropagation();
                 startNewChat();
@@ -411,25 +398,37 @@ export default function ChatPage() {
                   {conversations.map((conversation) => (
                     <div
                       key={conversation.id}
-                      className={`p-3 rounded-lg border cursor-pointer transition-all duration-200 hover:shadow-md ${
+                      className={`group px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm relative ${
                         currentConversationId === conversation.id
-                          ? "bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-700"
-                          : "bg-gray-100 dark:bg-neutral-700 border-gray-300 dark:border-neutral-600 hover:border-gray-400/40"
+                          ? "bg-teal-50 dark:bg-teal-900/20 border-l-3 border-teal-500"
+                          : "hover:bg-teal-50/60 dark:hover:bg-teal-900/10 border-l-3 border-transparent hover:border-teal-300 dark:hover:border-teal-600"
                       }`}
                       onClick={() => selectConversation(conversation)}
+                      title={conversation.title || 'New Conversation'}
                     >
-                      <h4 className="text-sm font-medium text-foreground truncate">{conversation.title}</h4>
-                      {conversation.lastMessage && (
-                        <p className="text-xs text-muted-foreground truncate mt-1">{conversation.lastMessage.content}</p>
-                      )}
-                      <div className="flex justify-between items-center mt-2">
-                        <p className="text-xs text-muted-foreground">
-                          {new Date(conversation.updatedAt).toLocaleDateString()}
-                        </p>
-                        <span className="text-xs bg-gray-200 dark:bg-neutral-600 px-2 py-1 rounded-full">
+                      <div className="flex items-center justify-between">
+                        <h4 className={`text-sm font-medium truncate pr-2 transition-colors duration-200 ${
+                          currentConversationId === conversation.id
+                            ? "text-teal-700 dark:text-teal-300"
+                            : "text-foreground group-hover:text-teal-600 dark:group-hover:text-teal-400"
+                        }`}>
+                          {conversation.title || 'New Conversation'}
+                        </h4>
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 transition-colors duration-200 ${
+                          currentConversationId === conversation.id
+                            ? "bg-teal-200 dark:bg-teal-800 text-teal-700 dark:text-teal-300"
+                            : "bg-gray-200 dark:bg-neutral-600 text-gray-600 dark:text-gray-300 group-hover:bg-teal-100 dark:group-hover:bg-teal-800/50"
+                        }`}>
                           {conversation.messageCount}
                         </span>
                       </div>
+                      
+                      {/* Subtle highlight indicator */}
+                      <div className={`absolute inset-0 rounded-lg transition-all duration-200 pointer-events-none ${
+                        currentConversationId === conversation.id
+                          ? "ring-1 ring-teal-500/20"
+                          : "group-hover:ring-1 group-hover:ring-teal-400/30"
+                      }`} />
                     </div>
                   ))}
                   {conversations.length === 0 && !isLoadingConversations && (
@@ -449,6 +448,7 @@ export default function ChatPage() {
                 {mounted && (
                   <>
                     {(isMobileSidebarOpen || (!isMobileSidebarOpen && isSidebarOpen)) && (
+                      isAuthenticated && user ? (
                         <Button
                           variant="outline"
                           size="sm"
@@ -459,6 +459,19 @@ export default function ChatPage() {
                           <LogOut className="w-4 h-4 mr-2" />
                           Sign out
                         </Button>
+                      ) : (
+                        <AuthModal>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="justify-center w-full bg-neutral-700 hover:bg-neutral-600 text-white dark:bg-neutral-700 dark:text-white dark:hover:bg-neutral-600 font-medium shadow-sm"
+                            title="Sign in to your account"
+                          >
+                            <LogIn className="w-4 h-4 mr-2" />
+                            Login
+                          </Button>
+                        </AuthModal>
+                      )
                     )}
                   </>
                 )}
@@ -484,7 +497,7 @@ export default function ChatPage() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-10 w-10 bg-white/80 dark:bg-neutral-800/80 backdrop-blur-sm border border-gray-200 dark:border-neutral-700"
+            className="h-10 w-10 bg-transparent hover:bg-transparent text-gray-800 dark:text-gray-200"
             onClick={toggleTheme}
             title={`Switch to ${resolvedTheme === "dark" ? "light" : "dark"} mode`}
           >
@@ -528,7 +541,7 @@ export default function ChatPage() {
                       <Button
                         onClick={handleSendMessage}
                         disabled={!inputValue.trim() || isStreaming}
-                        className="pointer-events-auto bg-gray-800 hover:bg-gray-900 dark:bg-gray-200 dark:hover:bg-gray-100 text-white dark:text-gray-900 h-8 w-8 sm:h-10 sm:w-10 rounded-lg transition-all duration-200"
+                        className="pointer-events-auto bg-transparent hover:bg-transparent text-gray-800 dark:text-gray-200 h-8 w-8 sm:h-10 sm:w-10 rounded-lg transition-all duration-200 border-0 shadow-none focus:shadow-none focus:ring-0 focus:outline-none"
                       >
                         {isStreaming ? (
                           <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
@@ -587,14 +600,23 @@ export default function ChatPage() {
                                 )}
                               </div>
                               <div className="text-gray-800 dark:text-gray-200 text-sm leading-relaxed">
-                                <div 
-                                  className="whitespace-pre-wrap"
-                                  dangerouslySetInnerHTML={{
-                                    __html: message.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                                  }}
-                                />
-                                {message.isStreaming && (
-                                  <span className="inline-block w-0.5 h-4 bg-teal-500 ml-0.5 animate-pulse" />
+                                {message.sender === "assistant" ? (
+                                  <div>
+                                    <MarkdownMessage 
+                                      content={message.content}
+                                      className="text-sm"
+                                    />
+                                    {message.isStreaming && (
+                                      <span className="inline-block w-0.5 h-4 bg-teal-500 ml-0.5 animate-pulse" />
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div 
+                                    className="whitespace-pre-wrap"
+                                    dangerouslySetInnerHTML={{
+                                      __html: message.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                    }}
+                                  />
                                 )}
                               </div>
                             </div>
@@ -622,7 +644,7 @@ export default function ChatPage() {
                       <Button
                         onClick={handleSendMessage}
                         disabled={!inputValue.trim() || isStreaming}
-                        className="pointer-events-auto bg-gray-800 hover:bg-gray-900 dark:bg-gray-200 dark:hover:bg-gray-100 text-white dark:text-gray-900 rounded-md h-6 w-6 sm:h-7 sm:w-7 p-0 transition-all duration-200"
+                        className="pointer-events-auto bg-transparent hover:bg-transparent text-gray-800 dark:text-gray-200 rounded-md h-6 w-6 sm:h-7 sm:w-7 p-0 transition-all duration-200 border-0 shadow-none focus:shadow-none focus:ring-0 focus:outline-none"
                       >
                         {isStreaming ? (
                           <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" />
@@ -638,6 +660,14 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
+      
+      {/* Authentication Modal - shown when user tries to send message without being signed in */}
+      <AuthModal 
+        open={isModalOpen && !isAuthenticated} 
+        onOpenChange={setIsModalOpen}
+      >
+        <div></div>
+      </AuthModal>
     </div>
   )
 }

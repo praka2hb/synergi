@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -32,14 +32,22 @@ type AuthStep = "email" | "otp"
 interface AuthModalProps {
   children: React.ReactNode
   onOpenChange?: (open: boolean) => void
+  open?: boolean
 }
 
-export function AuthModal({ children, onOpenChange }: AuthModalProps) {
+export function AuthModal({ children, onOpenChange, open: externalOpen }: AuthModalProps) {
   const { login } = useAuth()
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<AuthStep>("email")
   const [isLoading, setIsLoading] = useState(false)
   const [currentEmail, setCurrentEmail] = useState("")
+
+  // Handle external open prop
+  useEffect(() => {
+    if (externalOpen !== undefined) {
+      setOpen(externalOpen)
+    }
+  }, [externalOpen])
 
   const emailForm = useForm<EmailData>({
     resolver: zodResolver(emailSchema),

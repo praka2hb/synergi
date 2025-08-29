@@ -410,3 +410,113 @@
 
 /* Import chat animations */
 @import "../styles/chat-animations.css";
+
+/* Markdown Code Block Styling */
+.markdown-message {
+  /* Improved typography and spacing */
+  line-height: 1.6;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Fix text rendering issues */
+.markdown-message p {
+  margin: 0 0 1rem 0;
+  color: inherit;
+  clear: both;
+}
+
+.markdown-message p:last-child {
+  margin-bottom: 0;
+}
+
+/* Improved inline code styling */
+.markdown-message :not(pre) > code {
+  @apply bg-gray-100 dark:bg-gray-800 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded text-sm font-mono;
+  font-size: 0.875em;
+}
+
+/* Code block container isolation */
+.markdown-message .relative.group {
+  display: block;
+  clear: both;
+  margin: 1.5rem 0;
+  isolation: isolate;
+}
+
+.markdown-message .relative.group + * {
+  clear: both;
+}
+
+.markdown-message pre {
+  @apply !bg-gray-900 !border-0 !rounded-none;
+  margin: 0;
+  display: block;
+  clear: both;
+}
+
+.markdown-message pre code {
+  @apply !bg-transparent !text-sm !leading-relaxed;
+  font-family: 'Fira Code', 'Consolas', 'Monaco', monospace;
+  color: #e5e7eb !important;
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+}
+
+/* List styling improvements */
+.markdown-message ul, .markdown-message ol {
+  margin: 0.5rem 0 1rem 0;
+  padding-left: 1.5rem;
+}
+
+.markdown-message li {
+  margin: 0.25rem 0;
+}
+
+/* Header improvements */
+.markdown-message h1, .markdown-message h2, .markdown-message h3, 
+.markdown-message h4, .markdown-message h5, .markdown-message h6 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.markdown-message h1:first-child, .markdown-message h2:first-child, 
+.markdown-message h3:first-child, .markdown-message h4:first-child, 
+.markdown-message h5:first-child, .markdown-message h6:first-child {
+  margin-top: 0;
+}
+
+/* Table improvements */
+.markdown-message table {
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.markdown-message th, .markdown-message td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem;
+}
+
+.dark .markdown-message th, .dark .markdown-message td {
+  border-color: #374151;
+}
+
+/* Custom scrollbar for code blocks */
+.markdown-message pre::-webkit-scrollbar {
+  height: 8px;
+}
+
+.markdown-message pre::-webkit-scrollbar-track {
+  @apply bg-gray-800;
+}
+
+.markdown-message pre::-webkit-scrollbar-thumb {
+  @apply bg-gray-600 rounded;
+}
+
+.markdown-message pre::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-500;
+}
