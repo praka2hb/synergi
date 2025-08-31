@@ -5,7 +5,13 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Send, Bot, User, Plus, Clock, SunMoon, Menu, X, LogIn, LogOut, PanelRightClose, Sparkles, Loader2 } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Send, Bot, User, Plus, Clock, SunMoon, Menu, X, LogIn, LogOut, Loader2, Trash2, MoreHorizontal } from "lucide-react"
 import { useTheme } from "next-themes"
 import SynergiLogo from "@/components/synergi-logo"
 import { AuthModal } from "@/components/auth-modal"
@@ -136,6 +142,34 @@ export default function ChatPage() {
       console.error('Failed to load messages:', error)
     } finally {
       setIsLoadingMessages(false)
+    }
+  }
+
+  const deleteConversation = async (conversationId: string) => {
+    if (!token) return
+    
+    try {
+      const response = await fetch(config.getApiUrl(`/api/chat/conversations/${conversationId}`), {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      
+      if (response.ok) {
+        // Remove from conversations list
+        setConversations(prev => prev.filter(conv => conv.id !== conversationId))
+        
+        // If this was the current conversation, clear messages and reset
+        if (currentConversationId === conversationId) {
+          setMessages([])
+          setCurrentConversationId(null)
+        }
+      } else {
+        console.error('Failed to delete conversation')
+      }
+    } catch (error) {
+      console.error('Failed to delete conversation:', error)
     }
   }
 
@@ -318,8 +352,8 @@ export default function ChatPage() {
       {/* Sidebar */}
       <div
         className={`fixed left-0 top-0 h-full bg-gray-50 dark:bg-neutral-800 border-r border-gray-200 dark:border-neutral-700 shadow-lg transition-all duration-300 z-50 ${
-          isMobileSidebarOpen ? "w-80 translate-x-0" : "w-80 -translate-x-full md:translate-x-0 md:w-16"
-        } ${!isMobileSidebarOpen && isSidebarOpen ? "md:w-80" : ""} ${
+          isMobileSidebarOpen ? "w-64 translate-x-0" : "w-64 -translate-x-full md:translate-x-0 md:w-16"
+        } ${!isMobileSidebarOpen && isSidebarOpen ? "md:w-64" : ""} ${
           !isMobileSidebarOpen && !isSidebarOpen ? "md:cursor-ew-resize md:hover:bg-gray-100/50 md:dark:hover:bg-neutral-700/50" : ""
         }`}
         onClick={() => {
@@ -362,7 +396,7 @@ export default function ChatPage() {
                   onClick={() => setIsSidebarOpen(false)}
                   title="Collapse sidebar"
                 >
-                  <PanelRightClose className="w-4 h-4" />
+                  <X className="w-4 h-4" />
                 </Button>
               )}
             </div>
@@ -388,46 +422,67 @@ export default function ChatPage() {
           {/* Conversations List */}
           <div className="flex-1 overflow-y-auto">
             {(isMobileSidebarOpen || (!isMobileSidebarOpen && isSidebarOpen)) && (
-              <div className="px-4 pb-4">
-                <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  Recent Chats
+              <div className="px-3 pb-3">
+                <h3 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-2 group">
+                  <Clock className="w-3 h-3 transition-colors duration-300 group-hover:text-teal-500" />
+                  <span className="transition-all duration-300 group-hover:text-teal-600 dark:group-hover:text-teal-400 group-hover:scale-105">
+                    Recent Chats
+                  </span>
                   {isLoadingConversations && <Loader2 className="w-3 h-3 animate-spin" />}
                 </h3>
-                <div className="space-y-2">
+                <div className="space-y-1">
                   {conversations.map((conversation) => (
                     <div
                       key={conversation.id}
-                      className={`group px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-sm relative ${
+                      className={`group px-2 py-1.5 rounded-md cursor-pointer transition-all duration-200 hover:shadow-sm relative ${
                         currentConversationId === conversation.id
-                          ? "bg-teal-50 dark:bg-teal-900/20 border-l-3 border-teal-500"
-                          : "hover:bg-teal-50/60 dark:hover:bg-teal-900/10 border-l-3 border-transparent hover:border-teal-300 dark:hover:border-teal-600"
+                          ? "bg-teal-50 dark:bg-teal-900/20"
+                          : "hover:bg-teal-50/60 dark:hover:bg-teal-900/10"
                       }`}
                       onClick={() => selectConversation(conversation)}
                       title={conversation.title || 'New Conversation'}
                     >
                       <div className="flex items-center justify-between">
-                        <h4 className={`text-sm font-medium truncate pr-2 transition-colors duration-200 ${
+                        <h4 className={`text-xs font-medium truncate pr-2 transition-colors duration-200 ${
                           currentConversationId === conversation.id
                             ? "text-teal-700 dark:text-teal-300"
                             : "text-foreground group-hover:text-teal-600 dark:group-hover:text-teal-400"
                         }`}>
                           {conversation.title || 'New Conversation'}
                         </h4>
-                        <span className={`text-xs px-1.5 py-0.5 rounded-full flex-shrink-0 transition-colors duration-200 ${
-                          currentConversationId === conversation.id
-                            ? "bg-teal-200 dark:bg-teal-800 text-teal-700 dark:text-teal-300"
-                            : "bg-gray-200 dark:bg-neutral-600 text-gray-600 dark:text-gray-300 group-hover:bg-teal-100 dark:group-hover:bg-teal-800/50"
-                        }`}>
-                          {conversation.messageCount}
-                        </span>
+                        <div className="flex items-center">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <MoreHorizontal className="h-3 w-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-40">
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  deleteConversation(conversation.id)
+                                }}
+                                className="text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400 focus:bg-red-50 dark:focus:bg-red-950/20"
+                              >
+                                <Trash2 className="h-3 w-3 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
                       
-                      {/* Subtle highlight indicator */}
-                      <div className={`absolute inset-0 rounded-lg transition-all duration-200 pointer-events-none ${
+                      {/* Right side teal gradient highlight indicator */}
+                      <div className={`absolute top-0 right-0 w-full h-full rounded-md transition-all duration-200 pointer-events-none ${
                         currentConversationId === conversation.id
-                          ? "ring-1 ring-teal-500/20"
-                          : "group-hover:ring-1 group-hover:ring-teal-400/30"
+                          ? "bg-gradient-to-l from-teal-500/20 via-teal-500/10 to-transparent"
+                          : "opacity-0 group-hover:opacity-100 group-hover:bg-gradient-to-l group-hover:from-teal-400/15 group-hover:via-teal-400/8 group-hover:to-transparent"
                       }`} />
                     </div>
                   ))}
@@ -508,7 +563,7 @@ export default function ChatPage() {
 
       {/* Main Chat Area */}
       <div className={`flex-1 relative z-10 h-screen flex p-2 sm:p-4 pt-16 md:pt-4 transition-all duration-300 ${
-        !isMobileSidebarOpen ? (isSidebarOpen ? "md:ml-80" : "md:ml-16") : ""
+        !isMobileSidebarOpen ? (isSidebarOpen ? "md:ml-64" : "md:ml-16") : ""
       }`}>
         <div className="w-full h-full flex flex-col bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 rounded-xl sm:rounded-2xl overflow-hidden shadow-lg">
           <div className="flex-1 flex flex-col px-2 sm:px-4 md:px-8 py-4 sm:py-8 min-h-0">
@@ -541,7 +596,7 @@ export default function ChatPage() {
                       <Button
                         onClick={handleSendMessage}
                         disabled={!inputValue.trim() || isStreaming}
-                        className="pointer-events-auto bg-transparent hover:bg-transparent text-gray-800 dark:text-gray-200 h-8 w-8 sm:h-10 sm:w-10 rounded-lg transition-all duration-200 border-0 shadow-none focus:shadow-none focus:ring-0 focus:outline-none"
+                        className="pointer-events-auto bg-transparent hover:bg-transparent text-neutral-800 dark:text-gray-200 h-8 w-8 sm:h-10 sm:w-10 rounded-lg transition-all duration-200 border-0 shadow-none focus:shadow-none focus:ring-0 focus:outline-none"
                       >
                         {isStreaming ? (
                           <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
@@ -571,7 +626,7 @@ export default function ChatPage() {
                       <div key={message.id}>
                         {message.sender === "user" ? (
                           <div className="flex justify-end">
-                            <div className="bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900 px-3 py-2 rounded-lg max-w-[85%] sm:max-w-[70%] text-sm">
+                            <div className="bg-zinc-200 dark:bg-zinc-800 text-gray-900 dark:text-gray-100 px-3 py-2 rounded-lg max-w-[85%] sm:max-w-[70%] text-sm">
                               <p className="leading-relaxed">{message.content}</p>
                               <div className="text-xs opacity-60 mt-1">
                                 {message.timestamp.toLocaleTimeString()}
