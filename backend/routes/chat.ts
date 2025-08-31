@@ -165,6 +165,36 @@ router.post("/send", authMiddleware, async (req: Request, res: Response) => {
     res.end();
   }
 });
+ 
+// DELETE /api/chat/conversations/:id - Delete a conversation
+router.delete("/conversations/:id", authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId!;
+    const conversationId = req.params.id;
+
+    // Verify conversation belongs to user
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: conversationId, userId }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: "Conversation not found" });
+    }
+
+    // Delete conversation (messages will be cascade deleted)
+    await prisma.conversation.delete({
+      where: { id: conversationId }
+    });
+
+    res.json({ message: "Conversation deleted successfully" });
+    return;
+  }
+  catch (error) {
+    console.error("Error deleting conversation:", error);
+    res.status(500).json({ error: "Internal server error" });
+    return;
+  }
+})
 
 // GET /api/chat/conversations - Get user's conversations
 router.get("/conversations", authMiddleware, async (req: Request, res: Response) => {
