@@ -5,19 +5,17 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Send, Bot, User, Plus, Clock, SunMoon, Menu, X, LogIn, LogOut, Loader2, Trash2, MoreHorizontal } from "lucide-react"
+import { Send, Bot, SunMoon, Menu, Loader2 } from "lucide-react"
 import { useTheme } from "next-themes"
 import SynergiLogo from "@/components/synergi-logo"
 import { AuthModal } from "@/components/auth-modal"
 import { useAuth } from "@/hooks/use-auth"
 import config from "@/lib/config"
 import { MarkdownMessage } from "@/components/markdown-message"
+import CommonSidebar from "@/components/common-sidebar"
+import AgentsView from "@/components/agents-view"
+import { useSidebar } from "@/context/sidebar-context"
+import { useRouter } from "next/navigation"
 
 interface Message {
   id: string
@@ -51,10 +49,10 @@ export default function ChatPage() {
   const [inputValue, setInputValue] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState("")
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
+
   const [isLoadingConversations, setIsLoadingConversations] = useState(false)
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
+  const [currentView, setCurrentView] = useState<'chat' | 'agents'>('chat')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Use next-themes for theme management
@@ -63,6 +61,11 @@ export default function ChatPage() {
   
   // Auth state
   const { user, isAuthenticated, logout, token } = useAuth()
+
+  // Sidebar state from context
+  const { isSidebarOpen, isMobileSidebarOpen, setIsMobileSidebarOpen } = useSidebar()
+
+  const router = useRouter()
   
   // Modal state to prevent sidebar interactions
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -72,10 +75,18 @@ export default function ChatPage() {
     setMounted(true)
   }, [])
 
-  // Load conversations when authenticated
+  // Load conversations when authenticated, clear when not authenticated
   useEffect(() => {
     if (isAuthenticated && token) {
       loadConversations()
+    } else {
+      // Clear conversations when user logs out
+      setConversations([])
+      setCurrentConversationId(null)
+      setMessages([])
+      setStreamingContent("")
+      // Reset to chat view if currently in agents view
+      setCurrentView('chat')
     }
   }, [isAuthenticated, token])
 
@@ -340,6 +351,17 @@ export default function ChatPage() {
     setIsMobileSidebarOpen(false)
   }
 
+  const handleChatWithAgent = (agentId: string) => {
+    // Switch to chat view and potentially start a conversation with the agent
+    setCurrentView('chat')
+    console.log(`Starting chat with agent: ${agentId}`)
+    // In a real app, this would initialize a conversation with the specific agent
+  }
+
+  const handleSwitchToChat = () => {
+    setCurrentView('chat')
+  }
+
   return (
     <div
       className="h-screen relative flex bg-gray-100 text-gray-800 dark:bg-neutral-800 dark:text-white transition-colors overflow-hidden"
@@ -349,192 +371,18 @@ export default function ChatPage() {
         <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setIsMobileSidebarOpen(false)} />
       )}
 
-      {/* Sidebar */}
-      <div
-        className={`fixed left-0 top-0 h-full bg-gray-50 dark:bg-neutral-800 border-r border-gray-200 dark:border-neutral-700 shadow-lg transition-all duration-300 z-50 ${
-          isMobileSidebarOpen ? "w-64 translate-x-0" : "w-64 -translate-x-full md:translate-x-0 md:w-16"
-        } ${!isMobileSidebarOpen && isSidebarOpen ? "md:w-64" : ""} ${
-          !isMobileSidebarOpen && !isSidebarOpen ? "md:cursor-ew-resize md:hover:bg-gray-100/50 md:dark:hover:bg-neutral-700/50" : ""
-        }`}
-        onClick={() => {
-          if (!isMobileSidebarOpen && !isSidebarOpen) {
-            setIsSidebarOpen(true);
-          }
-        }}
-        title={!isMobileSidebarOpen && !isSidebarOpen ? "Click to expand sidebar" : ""}
-      >
-        <div 
-          className="flex flex-col h-full"
-          onClick={(e) => {
-            if (!isMobileSidebarOpen && isSidebarOpen) {
-              e.stopPropagation();
-            }
-          }}
-        >
-          {/* Header */}
-          <div className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center relative">
-                <SynergiLogo width={36} height={36} className="flex-shrink-0" />
-              </div>
-              {(isMobileSidebarOpen || (!isMobileSidebarOpen && isSidebarOpen)) && (
-                <div className="flex-1 min-w-0">
-                  <h2 className="font-semibold text-foreground">Synergi AI</h2>
-                  <p className="text-xs text-muted-foreground">Multi-Agent Chat</p>
-                </div>
-              )}
-              {isMobileSidebarOpen && (
-                <Button variant="ghost" size="sm" className="md:hidden" onClick={() => setIsMobileSidebarOpen(false)}>
-                  <X className="w-4 h-4" />
-                </Button>
-              )}
-              {!isMobileSidebarOpen && isSidebarOpen && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="cursor-ew-resize hidden md:flex"
-                  onClick={() => setIsSidebarOpen(false)}
-                  title="Collapse sidebar"
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {/* New Chat Button */}
-          <div className="px-4 py-3 border-t border-gray-200/50 dark:border-neutral-700/50">
-            <Button
-              className={`${isMobileSidebarOpen || (!isMobileSidebarOpen && isSidebarOpen) ? "w-full justify-start" : "w-10 h-10 p-0"} 
-                    bg-teal-50 hover:bg-gray-50 text-gray-800 dark:bg-neutral-700 dark:hover:bg-neutral-600 dark:text-white border-0`}
-              onClick={(e) => {
-                e.stopPropagation();
-                startNewChat();
-              }}
-            >
-              <Plus className="w-4 h-4" />
-              {(isMobileSidebarOpen || (!isMobileSidebarOpen && isSidebarOpen)) && (
-                <span className="ml-2">New Chat</span>
-              )}
-            </Button>
-          </div>
-
-          {/* Conversations List */}
-          <div className="flex-1 overflow-y-auto">
-            {(isMobileSidebarOpen || (!isMobileSidebarOpen && isSidebarOpen)) && (
-              <div className="px-3 pb-3">
-                <h3 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-2 group">
-                  <Clock className="w-3 h-3 transition-colors duration-300 group-hover:text-teal-500" />
-                  <span className="transition-all duration-300 group-hover:text-teal-600 dark:group-hover:text-teal-400 group-hover:scale-105">
-                    Recent Chats
-                  </span>
-                  {isLoadingConversations && <Loader2 className="w-3 h-3 animate-spin" />}
-                </h3>
-                <div className="space-y-1">
-                  {conversations.map((conversation) => (
-                    <div
-                      key={conversation.id}
-                      className={`group px-2 py-1.5 rounded-md cursor-pointer transition-all duration-200 hover:shadow-sm relative ${
-                        currentConversationId === conversation.id
-                          ? "bg-teal-50 dark:bg-teal-900/20"
-                          : "hover:bg-teal-50/60 dark:hover:bg-teal-900/10"
-                      }`}
-                      onClick={() => selectConversation(conversation)}
-                      title={conversation.title || 'New Conversation'}
-                    >
-                      <div className="flex items-center justify-between">
-                        <h4 className={`text-xs font-medium truncate pr-2 transition-colors duration-200 ${
-                          currentConversationId === conversation.id
-                            ? "text-teal-700 dark:text-teal-300"
-                            : "text-foreground group-hover:text-teal-600 dark:group-hover:text-teal-400"
-                        }`}>
-                          {conversation.title || 'New Conversation'}
-                        </h4>
-                        <div className="flex items-center">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-gray-100 dark:hover:bg-gray-800"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <MoreHorizontal className="h-3 w-3 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-40">
-                              <DropdownMenuItem
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  deleteConversation(conversation.id)
-                                }}
-                                className="text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400 focus:bg-red-50 dark:focus:bg-red-950/20"
-                              >
-                                <Trash2 className="h-3 w-3 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </div>
-                      
-                      {/* Right side teal gradient highlight indicator */}
-                      <div className={`absolute top-0 right-0 w-full h-full rounded-md transition-all duration-200 pointer-events-none ${
-                        currentConversationId === conversation.id
-                          ? "bg-gradient-to-l from-teal-500/20 via-teal-500/10 to-transparent"
-                          : "opacity-0 group-hover:opacity-100 group-hover:bg-gradient-to-l group-hover:from-teal-400/15 group-hover:via-teal-400/8 group-hover:to-transparent"
-                      }`} />
-                    </div>
-                  ))}
-                  {conversations.length === 0 && !isLoadingConversations && (
-                    <div className="text-center text-muted-foreground text-sm py-8">
-                      No conversations yet.<br />Start a new chat to begin!
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* User Controls */}
-          <div className="p-4 border-t border-gray-200 dark:border-neutral-700">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 w-full justify-end">
-                {mounted && (
-                  <>
-                    {(isMobileSidebarOpen || (!isMobileSidebarOpen && isSidebarOpen)) && (
-                      isAuthenticated && user ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="justify-center w-full bg-gray-100 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 hover:bg-gray-200 dark:hover:bg-neutral-700 text-gray-800 dark:text-gray-200 font-medium"
-                          onClick={logout}
-                          title="Sign out"
-                        >
-                          <LogOut className="w-4 h-4 mr-2" />
-                          Sign out
-                        </Button>
-                      ) : (
-                        <AuthModal>
-                          <Button
-                            variant="default"
-                            size="sm"
-                            className="justify-center w-full bg-neutral-700 hover:bg-neutral-600 text-white dark:bg-neutral-700 dark:text-white dark:hover:bg-neutral-600 font-medium shadow-sm"
-                            title="Sign in to your account"
-                          >
-                            <LogIn className="w-4 h-4 mr-2" />
-                            Login
-                          </Button>
-                        </AuthModal>
-                      )
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Common Sidebar */}
+      <CommonSidebar
+        currentPage={currentView}
+        conversations={conversations}
+        currentConversationId={currentConversationId}
+        isLoadingConversations={isLoadingConversations}
+        selectConversation={selectConversation}
+        startNewChat={startNewChat}
+        deleteConversation={deleteConversation}
+        onSwitchToChat={handleSwitchToChat}
+        onSwitchToAgents={() => setCurrentView('agents')}
+      />
 
       {/* Mobile Menu Button */}
       <Button
@@ -561,12 +409,15 @@ export default function ChatPage() {
         )}
       </div>
 
-      {/* Main Chat Area */}
-      <div className={`flex-1 relative z-10 h-screen flex p-2 sm:p-4 pt-16 md:pt-4 transition-all duration-300 ${
+      {/* Main Content Area */}
+      <div className={`flex-1 relative z-10 h-screen flex p-2 sm:p-4 pt-16 md:pt-4 transition-all duration-500 ease-in-out ${
         !isMobileSidebarOpen ? (isSidebarOpen ? "md:ml-64" : "md:ml-16") : ""
       }`}>
         <div className="w-full h-full flex flex-col bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 rounded-xl sm:rounded-2xl overflow-hidden shadow-lg">
-          <div className="flex-1 flex flex-col px-2 sm:px-4 md:px-8 py-4 sm:py-8 min-h-0">
+          {/* Content Area */}
+          <div className="flex-1 overflow-hidden">
+            {currentView === 'chat' ? (
+              <div className="h-full flex flex-col px-2 sm:px-4 md:px-8 py-4 sm:py-8">
             {messages.length === 0 && !isLoadingMessages ? (
               /* Empty State */
               <div className="flex-1 flex items-center justify-center overflow-y-auto">
@@ -596,7 +447,7 @@ export default function ChatPage() {
                       <Button
                         onClick={handleSendMessage}
                         disabled={!inputValue.trim() || isStreaming}
-                        className="pointer-events-auto bg-transparent hover:bg-transparent text-neutral-800 dark:text-gray-200 h-8 w-8 sm:h-10 sm:w-10 rounded-lg transition-all duration-200 border-0 shadow-none focus:shadow-none focus:ring-0 focus:outline-none"
+                            className="pointer-events-auto bg-transparent hover:bg-transparent text-neutral-800 dark:text-gray-200 h-8 w-8 sm:h-10 sm:w-10 rounded-lg transition-all duration-200 border-0 shadow-none focus:shadow-none focus:ring-0 focus:outline-none"
                       >
                         {isStreaming ? (
                           <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
@@ -606,12 +457,11 @@ export default function ChatPage() {
                       </Button>
                     </div>
                   </div>
-
-                  
                 </div>
               </div>
             ) : (
               /* Chat Messages */
+                  <>
               <div className="flex-1 flex flex-col items-center min-h-0">
                 {isLoadingMessages ? (
                   <div className="flex-1 flex items-center justify-center">
@@ -626,7 +476,7 @@ export default function ChatPage() {
                       <div key={message.id}>
                         {message.sender === "user" ? (
                           <div className="flex justify-end">
-                            <div className="bg-zinc-200 dark:bg-zinc-800 text-gray-900 dark:text-gray-100 px-3 py-2 rounded-lg max-w-[85%] sm:max-w-[70%] text-sm">
+                                  <div className="bg-zinc-200 dark:bg-zinc-800 text-gray-900 dark:text-gray-100 px-3 py-2 rounded-lg max-w-[85%] sm:max-w-[70%] text-sm">
                               <p className="leading-relaxed">{message.content}</p>
                               <div className="text-xs opacity-60 mt-1">
                                 {message.timestamp.toLocaleTimeString()}
@@ -683,6 +533,7 @@ export default function ChatPage() {
                     <div ref={messagesEndRef} />
                     </div>
                   )}
+                    </div>
 
                 {/* Chat Input */}
                 <div className="flex-shrink-0 py-2 sm:py-3 w-full flex justify-center border-t border-gray-100 dark:border-neutral-800">
@@ -710,6 +561,12 @@ export default function ChatPage() {
                     </div>
                   </div>
                 </div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="h-full overflow-auto p-4 sm:p-6">
+                <AgentsView onChatWithAgent={handleChatWithAgent} />
               </div>
             )}
           </div>

@@ -4,6 +4,7 @@ import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
 import "./globals.css"
 import { AuthProvider } from "@/context/auth-context"
+import { SidebarProvider } from "@/context/sidebar-context"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
 
@@ -40,16 +41,18 @@ html {
       </head>
       <body>
         <AuthProvider>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-            storageKey="synergi-theme"
-          >
-            {children}
-            <Toaster />
-          </ThemeProvider>
+          <SidebarProvider>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+              storageKey="synergi-theme"
+            >
+              {children}
+              <Toaster />
+            </ThemeProvider>
+          </SidebarProvider>
         </AuthProvider>
       </body>
     </html>
