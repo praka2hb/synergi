@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import authRouter from "./routes/auth";
+import privyAuthRouter from "./routes/privy-auth";
 import chatRouter from "./routes/chat";
 import { validateEnvironment } from "./env-check";
 
@@ -12,6 +13,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/api/auth", authRouter);
+app.use("/api/privy", privyAuthRouter);
 app.use("/api/chat", chatRouter)
 
 app.get("/", (req, res) => {

@@ -4,6 +4,8 @@ import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
 import "./globals.css"
 import { AuthProvider } from "@/context/auth-context"
+import { PrivyAuthProvider } from "@/context/privy-auth-context"
+import { CustomPrivyProvider } from "@/components/privy-provider"
 import { SidebarProvider } from "@/context/sidebar-context"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Toaster } from "@/components/ui/sonner"
@@ -32,28 +34,32 @@ export default function RootLayout({
     <html lang="en">
       <head>
         <style>{`
-html {
-  font-family: ${GeistSans.style.fontFamily};
-  --font-sans: ${GeistSans.variable};
-  --font-mono: ${GeistMono.variable};
-}
+          html {
+            font-family: ${GeistSans.style.fontFamily};
+            --font-sans: ${GeistSans.variable};
+            --font-mono: ${GeistMono.variable};
+          }
         `}</style>
       </head>
       <body>
-        <AuthProvider>
-          <SidebarProvider>
-            <ThemeProvider
-              attribute="class"
-              defaultTheme="system"
-              enableSystem
-              disableTransitionOnChange
-              storageKey="synergi-theme"
-            >
-              {children}
-              <Toaster />
-            </ThemeProvider>
-          </SidebarProvider>
-        </AuthProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+          storageKey="synergi-theme"
+        >
+          <CustomPrivyProvider>
+            <PrivyAuthProvider>
+              <AuthProvider>
+                <SidebarProvider>
+                  {children}
+                  <Toaster />
+                </SidebarProvider>
+              </AuthProvider>
+            </PrivyAuthProvider>
+          </CustomPrivyProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

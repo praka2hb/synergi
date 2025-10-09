@@ -25,8 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useTheme } from "next-themes"
 import SynergiLogo from "@/components/synergi-logo"
-import { AuthModal } from "@/components/auth-modal"
-import { useAuth } from "@/hooks/use-auth"
+import { usePrivyAuth } from "@/hooks/use-privy-auth"
 import { useSidebar } from "@/context/sidebar-context"
 import { useRouter } from "next/navigation"
 
@@ -72,7 +71,7 @@ export default function CommonSidebar({
 }: CommonSidebarProps) {
   const { theme, setTheme, resolvedTheme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
-  const { user, isAuthenticated, logout } = useAuth()
+  const { user, isAuthenticated, login, logout } = usePrivyAuth()
   const { isSidebarOpen, isMobileSidebarOpen, setIsSidebarOpen, setIsMobileSidebarOpen } = useSidebar()
   const router = useRouter()
 
@@ -353,33 +352,50 @@ export default function CommonSidebar({
                         title="Sign out"
                       >
                         <LogOut className="w-4 h-4 mr-2" />
-                        Sign out
+                        Logout
                       </Button>
                     ) : (
-                      <AuthModal>
-                        <Button
-                          variant="default"
-                          size="sm"
-                          className="justify-center w-full bg-neutral-700 hover:bg-neutral-600 text-white dark:bg-neutral-700 dark:text-white dark:hover:bg-neutral-600 font-medium shadow-sm"
-                          title="Sign in to your account"
-                        >
-                          <LogIn className="w-4 h-4 mr-2" />
-                          Login
-                        </Button>
-                      </AuthModal>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        className="justify-center w-full bg-gray-100 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-700 hover:bg-gray-200 dark:hover:bg-neutral-700 text-gray-800 dark:text-gray-200 font-medium"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          login();
+                        }}
+                        title="Login to your account"
+                      >
+                        <LogIn className="w-4 h-4 mr-2" />
+                        Login
+                      </Button>
                     )
                   )}
-                  {!isMobileSidebarOpen && !isSidebarOpen && isAuthenticated && user && (
+                  {!isMobileSidebarOpen && !isSidebarOpen && (
                     <div className="flex flex-col gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="p-2"
-                        onClick={logout}
-                        title="Sign out"
-                      >
-                        <LogOut className="w-4 h-4" />
-                      </Button>
+                      {isAuthenticated && user ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="p-2"
+                          onClick={logout}
+                          title="Logout"
+                        >
+                          <LogOut className="w-4 h-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="p-2"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            login();
+                          }}
+                          title="Login"
+                        >
+                          <LogIn className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   )}
                 </>

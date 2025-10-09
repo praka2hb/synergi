@@ -8,10 +8,10 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Send, Bot, SunMoon, Menu, Loader2 } from "lucide-react"
 import { useTheme } from "next-themes"
 import SynergiLogo from "@/components/synergi-logo"
-import { AuthModal } from "@/components/auth-modal"
-import { useAuth } from "@/hooks/use-auth"
+import { usePrivyAuth } from "@/hooks/use-privy-auth"
 import config from "@/lib/config"
 import { MarkdownMessage } from "@/components/markdown-message"
+import { AdvancedStreamingText } from "@/components/advanced-streaming-text"
 import CommonSidebar from "@/components/common-sidebar"
 import AgentsView from "@/components/agents-view"
 import { useSidebar } from "@/context/sidebar-context"
@@ -59,16 +59,13 @@ export default function ChatPage() {
   const { theme, setTheme, resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   
-  // Auth state
-  const { user, isAuthenticated, logout, token } = useAuth()
+  // Auth state - using Privy
+  const { user, isAuthenticated, token } = usePrivyAuth()
 
   // Sidebar state from context
   const { isSidebarOpen, isMobileSidebarOpen, setIsMobileSidebarOpen } = useSidebar()
 
   const router = useRouter()
-  
-  // Modal state to prevent sidebar interactions
-  const [isModalOpen, setIsModalOpen] = useState(false)
 
   // Ensure component is mounted
   useEffect(() => {
@@ -187,9 +184,8 @@ export default function ChatPage() {
   const handleSendMessage = useCallback(async () => {
     if (!inputValue.trim() || isStreaming) return
 
-    // If user is not authenticated, show signin modal
+    // If user is not authenticated, do nothing (they should use the login button in header)
     if (!isAuthenticated || !token) {
-      setIsModalOpen(true)
       return
     }
 
@@ -395,7 +391,7 @@ export default function ChatPage() {
       </Button>
 
       {/* Theme Toggle */}
-      <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
+      <div className="fixed top-4 right-4 z-50">
         {mounted && (
           <Button
             variant="ghost"
@@ -506,15 +502,11 @@ export default function ChatPage() {
                               </div>
                               <div className="text-gray-800 dark:text-gray-200 text-sm leading-relaxed">
                                 {message.sender === "assistant" ? (
-                                  <div>
-                                    <MarkdownMessage 
-                                      content={message.content}
-                                      className="text-sm"
-                                    />
-                                    {message.isStreaming && (
-                                      <span className="inline-block w-0.5 h-4 bg-teal-500 ml-0.5 animate-pulse" />
-                                    )}
-                                  </div>
+                                  <AdvancedStreamingText
+                                    content={message.content}
+                                    isStreaming={message.isStreaming || false}
+                                    className="text-sm"
+                                  />
                                 ) : (
                                   <div 
                                     className="whitespace-pre-wrap"
@@ -572,14 +564,6 @@ export default function ChatPage() {
           </div>
         </div>
       </div>
-      
-      {/* Authentication Modal - shown when user tries to send message without being signed in */}
-      <AuthModal 
-        open={isModalOpen && !isAuthenticated} 
-        onOpenChange={setIsModalOpen}
-      >
-        <div></div>
-      </AuthModal>
     </div>
   )
 }
