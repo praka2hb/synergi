@@ -9,7 +9,8 @@ interface EnvConfig {
     POSTMARK_SERVER_TOKEN?: string;
     FROM_EMAIL?: string;
     DATABASE_URL: string;
-    GEMINI_API_KEY: string;
+    OPENROUTER_API_KEY: string;
+    TAVILY_API_KEY?: string;
 }
 
 export function validateEnvironment(): EnvConfig {
@@ -18,13 +19,14 @@ export function validateEnvironment(): EnvConfig {
     // Required variables
     if (!process.env.JWT_SECRET) missing.push('JWT_SECRET');
     if (!process.env.DATABASE_URL) missing.push('DATABASE_URL');
-    if (!process.env.GEMINI_API_KEY) missing.push('GEMINI_API_KEY');
+    if (!process.env.OPENROUTER_API_KEY) missing.push('OPENROUTER_API_KEY');
     
     // Optional but recommended for production
     const warnings: string[] = [];
     if (!process.env.POSTMARK_SERVER_TOKEN) warnings.push('POSTMARK_SERVER_TOKEN (emails will be logged instead)');
     if (!process.env.FROM_EMAIL) warnings.push('FROM_EMAIL (required if using Postmark)');
     if (!process.env.NODE_ENV) warnings.push('NODE_ENV (defaulting to development mode)');
+    if (!process.env.TAVILY_API_KEY) warnings.push('TAVILY_API_KEY (web search agent will not work without it)');
     
     if (missing.length > 0) {
         console.error('❌ Missing required environment variables:');
@@ -42,7 +44,8 @@ export function validateEnvironment(): EnvConfig {
     console.log(`  - NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
     console.log(`  - DATABASE_URL: ${process.env.DATABASE_URL ? '✓ Set' : '✗ Missing'}`);
     console.log(`  - JWT_SECRET: ${process.env.JWT_SECRET ? '✓ Set' : '✗ Missing'}`);
-    console.log(`  - GEMINI_API_KEY: ${process.env.GEMINI_API_KEY ? '✓ Set' : '✗ Missing'}`);
+    console.log(`  - OPENROUTER_API_KEY: ${process.env.OPENROUTER_API_KEY ? '✓ Set' : '✗ Missing'}`);
+    console.log(`  - TAVILY_API_KEY: ${process.env.TAVILY_API_KEY ? '✓ Set' : '✗ Missing'}`);
     console.log(`  - POSTMARK_SERVER_TOKEN: ${process.env.POSTMARK_SERVER_TOKEN ? '✓ Set' : '✗ Missing'}`);
     console.log(`  - FROM_EMAIL: ${process.env.FROM_EMAIL || '✗ Missing'}`);
     
@@ -52,6 +55,7 @@ export function validateEnvironment(): EnvConfig {
         POSTMARK_SERVER_TOKEN: process.env.POSTMARK_SERVER_TOKEN,
         FROM_EMAIL: process.env.FROM_EMAIL,
         DATABASE_URL: process.env.DATABASE_URL!,
-        GEMINI_API_KEY: process.env.GEMINI_API_KEY!,
+        OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY!,
+        TAVILY_API_KEY: process.env.TAVILY_API_KEY,
     };
 }

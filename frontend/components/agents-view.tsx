@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -18,8 +18,10 @@ import {
   Calculator,
   Globe,
   MessageSquare,
-  Loader2
+  Loader2,
+  CloudSun
 } from "lucide-react"
+import config from "@/lib/config"
 
 interface Agent {
   id: string
@@ -39,6 +41,75 @@ export default function AgentsView({ onChatWithAgent }: AgentsViewProps) {
   const [newAgentName, setNewAgentName] = useState("")
   const [newAgentDescription, setNewAgentDescription] = useState("")
   const [newAgentSpecialty, setNewAgentSpecialty] = useState("")
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Map agent IDs to icons
+  const agentIconMap: Record<string, React.ReactNode> = {
+    web_search: <Globe className="w-6 h-6" />,
+    weather: <CloudSun className="w-6 h-6" />,
+    general: <Bot className="w-6 h-6" />,
+    code: <Code className="w-6 h-6" />,
+    research: <Search className="w-6 h-6" />,
+    writing: <BookOpen className="w-6 h-6" />,
+    math: <Calculator className="w-6 h-6" />,
+  }
+
+  // Map agent IDs to specialties
+  const agentSpecialtyMap: Record<string, string> = {
+    web_search: "Web Search",
+    weather: "Weather",
+    general: "General",
+    code: "Development",
+    research: "Research",
+    writing: "Writing",
+    math: "Mathematics",
+  }
+
+  // Fetch agents from API
+  useEffect(() => {
+    const fetchAgents = async () => {
+      try {
+        const response = await fetch(config.getApiUrl(config.endpoints.chat.agents))
+        if (response.ok) {
+          const data = await response.json()
+          const mappedAgents: Agent[] = data.agents.map((a: any) => ({
+            id: a.id,
+            name: a.name,
+            description: a.description,
+            icon: agentIconMap[a.id] || <Bot className="w-6 h-6" />,
+            specialty: agentSpecialtyMap[a.id] || "General",
+            isActive: a.isActive,
+          }))
+          setAgents(mappedAgents)
+        }
+      } catch (error) {
+        console.error("Failed to fetch agents:", error)
+        // Fallback to default agents
+        setAgents([
+          {
+            id: "web_search",
+            name: "Web Search Agent",
+            description: "Searches the web for current, real-time information, latest news, and up-to-date facts",
+            icon: <Globe className="w-6 h-6" />,
+            specialty: "Web Search",
+            isActive: true,
+          },
+          {
+            id: "general",
+            name: "General Assistant",
+            description: "Handles general conversation, coding help, creative writing, analysis, and knowledge-based questions",
+            icon: <Bot className="w-6 h-6" />,
+            specialty: "General",
+            isActive: true,
+          },
+        ])
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchAgents()
+  }, [])
 
   const handleAddAgent = () => {
     if (newAgentName.trim() && newAgentDescription.trim() && newAgentSpecialty) {
@@ -56,34 +127,6 @@ export default function AgentsView({ onChatWithAgent }: AgentsViewProps) {
       setIsAddAgentOpen(false)
     }
   }
-
-  // Mock agents data - in a real app this would come from an API
-  const agents: Agent[] = [
-    {
-      id: "1",
-      name: "Code Assistant",
-      description: "Expert in programming, debugging, and code optimization",
-      icon: <Code className="w-6 h-6" />,
-      specialty: "Development",
-      isActive: true
-    },
-    {
-      id: "2",
-      name: "Research Analyst",
-      description: "Deep research, data analysis, and information synthesis",
-      icon: <Search className="w-6 h-6" />,
-      specialty: "Research",
-      isActive: true
-    },
-    {
-      id: "3",
-      name: "Creative Writer",
-      description: "Content creation, storytelling, and creative writing",
-      icon: <BookOpen className="w-6 h-6" />,
-      specialty: "Writing",
-      isActive: false
-    }
-  ]
 
   return (
     <div className="max-w-4xl mx-auto">

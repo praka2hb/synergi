@@ -5,7 +5,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Send, Bot, SunMoon, Menu, Loader2 } from "lucide-react"
+import { Send, Bot, SunMoon, Menu, Loader2, Globe, CloudSun, Code } from "lucide-react"
 import { useTheme } from "next-themes"
 import SynergiLogo from "@/components/synergi-logo"
 import { usePrivyAuth } from "@/hooks/use-privy-auth"
@@ -16,6 +16,16 @@ import CommonSidebar from "@/components/common-sidebar"
 import AgentsView from "@/components/agents-view"
 import { useSidebar } from "@/context/sidebar-context"
 import { useRouter } from "next/navigation"
+import { WeatherCard, type WeatherData } from "@/components/weather-card"
+import CodePreview from "@/components/CodePreview"
+
+interface CodeData {
+  type: "output" | "ui"
+  code: string
+  framework?: "html" | "react"
+  sourceCode?: string
+  language?: "python" | "javascript"
+}
 
 interface Message {
   id: string
@@ -23,6 +33,10 @@ interface Message {
   sender: "user" | "assistant"
   timestamp: Date
   isStreaming?: boolean
+  agent?: string
+  agentName?: string
+  weatherData?: WeatherData
+  codeData?: CodeData
 }
 
 interface Conversation {
@@ -49,6 +63,7 @@ export default function ChatPage() {
   const [inputValue, setInputValue] = useState("")
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState("")
+  const [currentAgent, setCurrentAgent] = useState<string | null>(null)
 
   const [isLoadingConversations, setIsLoadingConversations] = useState(false)
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
@@ -58,7 +73,7 @@ export default function ChatPage() {
   // Use next-themes for theme management
   const { theme, setTheme, resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
-  
+
   // Auth state - using Privy
   const { user, isAuthenticated, token } = usePrivyAuth()
 
@@ -105,7 +120,7 @@ export default function ChatPage() {
 
   const loadConversations = async () => {
     if (!token) return
-    
+
     setIsLoadingConversations(true)
     try {
       const response = await fetch(config.getApiUrl(config.endpoints.chat.conversations), {
@@ -113,7 +128,7 @@ export default function ChatPage() {
           'Authorization': `Bearer ${token}`,
         },
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         setConversations(data.conversations || [])
@@ -127,7 +142,7 @@ export default function ChatPage() {
 
   const loadConversationMessages = async (conversationId: string) => {
     if (!token) return
-    
+
     setIsLoadingMessages(true)
     try {
       const response = await fetch(config.getApiUrl(config.endpoints.chat.messages(conversationId)), {
@@ -135,7 +150,7 @@ export default function ChatPage() {
           'Authorization': `Bearer ${token}`,
         },
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         setMessages(data.messages.map((msg: any) => ({
@@ -143,6 +158,8 @@ export default function ChatPage() {
           content: msg.content,
           sender: msg.role.toLowerCase(),
           timestamp: new Date(msg.createdAt),
+          weatherData: msg.metadata?.weatherData,
+          codeData: msg.metadata?.codeData,
         })))
         setCurrentConversationId(conversationId)
       }
@@ -155,7 +172,7 @@ export default function ChatPage() {
 
   const deleteConversation = async (conversationId: string) => {
     if (!token) return
-    
+
     try {
       const response = await fetch(config.getApiUrl(`/api/chat/conversations/${conversationId}`), {
         method: 'DELETE',
@@ -163,11 +180,11 @@ export default function ChatPage() {
           'Authorization': `Bearer ${token}`,
         },
       })
-      
+
       if (response.ok) {
         // Remove from conversations list
         setConversations(prev => prev.filter(conv => conv.id !== conversationId))
-        
+
         // If this was the current conversation, clear messages and reset
         if (currentConversationId === conversationId) {
           setMessages([])
@@ -223,6 +240,7 @@ export default function ChatPage() {
       let streamingMessageId = (Date.now() + 1).toString()
       let fullContent = ""
       let currentEvent = ""
+      let selectedAgent: string | undefined = undefined
 
       if (reader) {
         while (true) {
@@ -237,76 +255,159 @@ export default function ChatPage() {
               currentEvent = line.substring(6).trim()
               continue
             }
-            
+
             if (line.startsWith('data:')) {
               try {
                 const dataStr = line.substring(5).trim()
                 if (!dataStr) continue
-                
+
                 const data = JSON.parse(dataStr)
-                
+
                 switch (currentEvent) {
                   case 'conversation':
                     if (data.conversationId && !currentConversationId) {
                       setCurrentConversationId(data.conversationId)
                     }
                     break
-                    
+
+                  case 'agent_selected':
+                    selectedAgent = data.agent
+                    setCurrentAgent(data.agent)
+                    // Store agent name for display
+                    var selectedAgentName = data.agentName || data.agent
+                    break
+
+                  case 'weather_data':
+                    // Attach structured weather data to the streaming message
+                    setMessages(prev =>
+                      prev.map(msg =>
+                        msg.id === streamingMessageId
+                          ? { ...msg, weatherData: data }
+                          : msg
+                      )
+                    )
+                    break
+
+                  case 'tool_call':
+                    // Capture source code and language from executeCode tool calls
+                    if (data.toolName === 'executeCode' && data.args) {
+                      setMessages(prev =>
+                        prev.map(msg =>
+                          msg.id === streamingMessageId
+                            ? {
+                              ...msg,
+                              codeData: {
+                                type: 'output' as const,
+                                code: '',
+                                sourceCode: data.args.code || '',
+                                language: data.args.language || 'python',
+                              }
+                            }
+                            : msg
+                        )
+                      )
+                    }
+                    break
+
+                  case 'tool_result': {
+                    // Handle code execution and UI generation results
+                    const toolResult = data.result
+                    if (data.toolName === 'executeCode' && toolResult) {
+                      const output = toolResult.success
+                        ? (toolResult.output || '(no output)')
+                        : (toolResult.error || 'Execution failed')
+                      // Merge with existing codeData (which has sourceCode/language from tool_call)
+                      setMessages(prev =>
+                        prev.map(msg =>
+                          msg.id === streamingMessageId
+                            ? {
+                              ...msg,
+                              codeData: {
+                                ...msg.codeData,
+                                type: 'output' as const,
+                                code: output,
+                              }
+                            }
+                            : msg
+                        )
+                      )
+                    } else if (data.toolName === 'generateUI' && toolResult) {
+                      setMessages(prev =>
+                        prev.map(msg =>
+                          msg.id === streamingMessageId
+                            ? {
+                              ...msg,
+                              codeData: {
+                                type: 'ui',
+                                code: toolResult.code || '',
+                                framework: toolResult.framework || 'html',
+                              }
+                            }
+                            : msg
+                        )
+                      )
+                    }
+                    break
+                  }
+
                   case 'ai_start':
-                    // Add streaming message placeholder
+                    // Add streaming message placeholder — read agent directly from event data
                     setMessages(prev => [...prev, {
                       id: streamingMessageId,
                       content: "",
                       sender: "assistant",
                       timestamp: new Date(),
                       isStreaming: true,
+                      agent: data.agent || selectedAgent,
+                      agentName: selectedAgentName || data.agent || selectedAgent,
                     }])
                     break
-                    
+
                   case 'ai_chunk':
                     if (data.chunk) {
                       fullContent += data.chunk
                       setStreamingContent(fullContent)
-                      
+
                       // Update the streaming message
-                      setMessages(prev => 
-                        prev.map(msg => 
-                          msg.id === streamingMessageId 
+                      setMessages(prev =>
+                        prev.map(msg =>
+                          msg.id === streamingMessageId
                             ? { ...msg, content: fullContent }
                             : msg
                         )
                       )
                     }
                     break
-                    
+
                   case 'ai_complete':
                     // Finalize the message
-                    setMessages(prev => 
-                      prev.map(msg => 
-                        msg.id === streamingMessageId 
-                          ? { 
-                              ...msg, 
-                              id: data.id || streamingMessageId,
-                              content: data.content || fullContent,
-                              isStreaming: false 
-                            }
+                    setMessages(prev =>
+                      prev.map(msg =>
+                        msg.id === streamingMessageId
+                          ? {
+                            ...msg,
+                            id: data.id || streamingMessageId,
+                            content: data.content || fullContent,
+                            isStreaming: false
+                          }
                           : msg
                       )
                     )
                     break
-                    
+
                   case 'title_generated':
                     // Refresh conversations to show new title
                     loadConversations()
                     break
-                    
+
                   case 'done':
                     setIsStreaming(false)
                     setStreamingContent("")
+                    setCurrentAgent(null)
                     // Refresh conversations list
                     loadConversations()
                     break
-                    
+
                   case 'error':
                     console.error('Stream error:', data)
                     setIsStreaming(false)
@@ -406,153 +507,184 @@ export default function ChatPage() {
       </div>
 
       {/* Main Content Area */}
-      <div className={`flex-1 relative z-10 h-screen flex p-2 sm:p-4 pt-16 md:pt-4 transition-all duration-500 ease-in-out ${
-        !isMobileSidebarOpen ? (isSidebarOpen ? "md:ml-64" : "md:ml-16") : ""
-      }`}>
+      <div className={`flex-1 relative z-10 h-screen flex p-2 sm:p-4 pt-16 md:pt-4 transition-all duration-500 ease-in-out ${!isMobileSidebarOpen ? (isSidebarOpen ? "md:ml-64" : "md:ml-16") : ""
+        }`}>
         <div className="w-full h-full flex flex-col bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 rounded-xl sm:rounded-2xl overflow-hidden shadow-lg">
           {/* Content Area */}
           <div className="flex-1 overflow-hidden">
             {currentView === 'chat' ? (
               <div className="h-full flex flex-col px-2 sm:px-4 md:px-8 py-4 sm:py-8">
-            {messages.length === 0 && !isLoadingMessages ? (
-              /* Empty State */
-              <div className="flex-1 flex items-center justify-center overflow-y-auto">
-                <div className="text-center space-y-6 sm:space-y-8 w-full max-w-3xl mx-auto">
-                  <div className="space-y-4">
-                    <div className="inline-flex">
-                      <SynergiLogo width={48} height={48} className="sm:w-16 sm:h-16" />
-                    </div>
-                    <div>
-                      <h1 className="text-xl sm:text-2xl font-medium text-gray-800 dark:text-white mb-1">
-                        Welcome to Synergi
-                      </h1>
-                      <p className="text-sm text-muted-foreground">Multi-Agent AI Assistant</p>
-                    </div>
-                  </div>
+                {messages.length === 0 && !isLoadingMessages ? (
+                  /* Empty State */
+                  <div className="flex-1 flex items-center justify-center overflow-y-auto">
+                    <div className="text-center space-y-6 sm:space-y-8 w-full max-w-3xl mx-auto">
+                      <div className="space-y-4">
+                        <div className="inline-flex">
+                          <SynergiLogo width={48} height={48} className="sm:w-16 sm:h-16" />
+                        </div>
+                        <div>
+                          <h1 className="text-xl sm:text-2xl font-medium text-gray-800 dark:text-white mb-1">
+                            Welcome to Synergi
+                          </h1>
+                          <p className="text-sm text-muted-foreground">Multi-Agent AI Assistant</p>
+                        </div>
+                      </div>
 
-                  <div className="grid max-w-4xl mx-auto">
-                    <Textarea
-                      value={inputValue}
-                      onChange={(e) => setInputValue(e.target.value)}
-                      onKeyDown={handleKeyPress}
-                      placeholder="Ask me anything..."
-                      className="[grid-area:1/1] w-full pr-12 sm:pr-14 pb-12 sm:pb-14 pt-4 sm:pt-6 text-sm rounded-xl focus:outline-none text-gray-900 dark:text-white resize-none min-h-[3.5rem] sm:min-h-[4rem] max-h-[8rem] sm:max-h-[10rem] overflow-y-auto placeholder:text-gray-500 dark:placeholder:text-gray-400 transition-colors bg-gray-50 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 focus:border-teal-500 dark:focus:border-teal-400"
-                      disabled={isStreaming}
-                    />
-                    <div className="[grid-area:1/1] pointer-events-none flex items-end justify-end p-3 sm:p-4">
-                      <Button
-                        onClick={handleSendMessage}
-                        disabled={!inputValue.trim() || isStreaming}
+                      <div className="grid max-w-4xl mx-auto">
+                        <Textarea
+                          value={inputValue}
+                          onChange={(e) => setInputValue(e.target.value)}
+                          onKeyDown={handleKeyPress}
+                          placeholder="Ask me anything..."
+                          className="[grid-area:1/1] w-full pr-12 sm:pr-14 pb-12 sm:pb-14 pt-4 sm:pt-6 text-sm rounded-xl focus:outline-none text-gray-900 dark:text-white resize-none min-h-[3.5rem] sm:min-h-[4rem] max-h-[8rem] sm:max-h-[10rem] overflow-y-auto placeholder:text-gray-500 dark:placeholder:text-gray-400 transition-colors bg-gray-50 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 focus:border-teal-500 dark:focus:border-teal-400"
+                          disabled={isStreaming}
+                        />
+                        <div className="[grid-area:1/1] pointer-events-none flex items-end justify-end p-3 sm:p-4">
+                          <Button
+                            onClick={handleSendMessage}
+                            disabled={!inputValue.trim() || isStreaming}
                             className="pointer-events-auto bg-transparent hover:bg-transparent text-neutral-800 dark:text-gray-200 h-8 w-8 sm:h-10 sm:w-10 rounded-lg transition-all duration-200 border-0 shadow-none focus:shadow-none focus:ring-0 focus:outline-none"
-                      >
-                        {isStreaming ? (
-                          <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
-                        ) : (
-                          <Send className="w-4 h-4 sm:w-5 sm:h-5" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              /* Chat Messages */
-                  <>
-              <div className="flex-1 flex flex-col items-center min-h-0">
-                {isLoadingMessages ? (
-                  <div className="flex-1 flex items-center justify-center">
-                    <div className="flex items-center gap-3 text-muted-foreground">
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span>Loading conversation...</span>
+                          >
+                            {isStreaming ? (
+                              <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+                            ) : (
+                              <Send className="w-4 h-4 sm:w-5 sm:h-5" />
+                            )}
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex-1 w-full max-w-4xl overflow-y-auto space-y-4 sm:space-y-6 py-2 sm:py-4 px-1 sm:px-2 min-h-0">
-                    {messages.map((message) => (
-                      <div key={message.id}>
-                        {message.sender === "user" ? (
-                          <div className="flex justify-end">
+                  /* Chat Messages */
+                  <>
+                    <div className="flex-1 flex flex-col items-center min-h-0">
+                      {isLoadingMessages ? (
+                        <div className="flex-1 flex items-center justify-center">
+                          <div className="flex items-center gap-3 text-muted-foreground">
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            <span>Loading conversation...</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex-1 w-full max-w-4xl overflow-y-auto space-y-4 sm:space-y-6 py-2 sm:py-4 px-1 sm:px-2 min-h-0">
+                          {messages.map((message) => (
+                            <div key={message.id}>
+                              {message.sender === "user" ? (
+                                <div className="flex justify-end">
                                   <div className="bg-zinc-200 dark:bg-zinc-800 text-gray-900 dark:text-gray-100 px-3 py-2 rounded-lg max-w-[85%] sm:max-w-[70%] text-sm">
-                              <p className="leading-relaxed">{message.content}</p>
-                              <div className="text-xs opacity-60 mt-1">
-                                {message.timestamp.toLocaleTimeString()}
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex gap-2 sm:gap-3">
-                            <Avatar className="w-7 h-7 sm:w-8 sm:h-8 border border-gray-300 dark:border-neutral-600 mt-1 flex-shrink-0">
-                              <AvatarFallback className="bg-gray-100 dark:bg-neutral-700 text-gray-600 dark:text-gray-300">
-                                <Bot className="w-3 h-3 sm:w-4 sm:h-4" />
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="font-medium text-gray-700 dark:text-gray-300 text-xs">Synergi</span>
-                                <span className="text-xs text-muted-foreground">
-                                  {message.timestamp.toLocaleTimeString()}
-                                </span>
-                                {message.isStreaming && (
-                                  <div className="flex items-center gap-1">
-                                    <div className="w-1 h-1 bg-teal-500 rounded-full animate-pulse" />
-                                    <div className="w-1 h-1 bg-teal-500 rounded-full animate-pulse" style={{ animationDelay: "0.2s" }} />
-                                    <div className="w-1 h-1 bg-teal-500 rounded-full animate-pulse" style={{ animationDelay: "0.4s" }} />
+                                    <p className="leading-relaxed">{message.content}</p>
+                                    <div className="text-xs opacity-60 mt-1">
+                                      {message.timestamp.toLocaleTimeString()}
+                                    </div>
                                   </div>
-                                )}
-                              </div>
-                              <div className="text-gray-800 dark:text-gray-200 text-sm leading-relaxed">
-                                {message.sender === "assistant" ? (
-                                  <AdvancedStreamingText
-                                    content={message.content}
-                                    isStreaming={message.isStreaming || false}
-                                    className="text-sm"
-                                  />
-                                ) : (
-                                  <div 
-                                    className="whitespace-pre-wrap"
-                                    dangerouslySetInnerHTML={{
-                                      __html: message.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                                    }}
-                                  />
-                                )}
-                              </div>
+                                </div>
+                              ) : (
+                                <div className="flex gap-2 sm:gap-3">
+                                  <Avatar className="w-7 h-7 sm:w-8 sm:h-8 border border-gray-300 dark:border-neutral-600 mt-1 flex-shrink-0">
+                                    <AvatarFallback className="bg-gray-100 dark:bg-neutral-700 text-gray-600 dark:text-gray-300">
+                                      <Bot className="w-3 h-3 sm:w-4 sm:h-4" />
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="font-medium text-gray-700 dark:text-gray-300 text-xs">Synergi</span>
+                                      {message.agent && (
+                                        <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${message.agent === 'web_search'
+                                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                          : message.agent === 'weather'
+                                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                                            : message.agent === 'code_assistant'
+                                              ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                                              : 'bg-gray-100 text-gray-600 dark:bg-neutral-700 dark:text-gray-300'
+                                          }`}>
+                                          {message.agent === 'web_search' && <Globe className="w-2.5 h-2.5" />}
+                                          {message.agent === 'weather' && <CloudSun className="w-2.5 h-2.5" />}
+                                          {message.agent === 'code_assistant' && <Code className="w-2.5 h-2.5" />}
+                                          {message.agent === 'general' && <Bot className="w-2.5 h-2.5" />}
+                                          {message.agentName || (message.agent === 'web_search' ? 'Web Search' : message.agent === 'weather' ? 'Weather' : message.agent === 'code_assistant' ? 'Code Assistant' : 'General')}
+                                        </span>
+                                      )}
+                                      <span className="text-xs text-muted-foreground">
+                                        {message.timestamp.toLocaleTimeString()}
+                                      </span>
+                                      {message.isStreaming && (
+                                        <div className="flex items-center gap-1">
+                                          <div className="w-1 h-1 bg-teal-500 rounded-full animate-pulse" />
+                                          <div className="w-1 h-1 bg-teal-500 rounded-full animate-pulse" style={{ animationDelay: "0.2s" }} />
+                                          <div className="w-1 h-1 bg-teal-500 rounded-full animate-pulse" style={{ animationDelay: "0.4s" }} />
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="text-gray-800 dark:text-gray-200 text-sm leading-relaxed">
+                                      {message.weatherData && (
+                                        <div className="mb-3">
+                                          <WeatherCard data={message.weatherData} />
+                                        </div>
+                                      )}
+                                      {message.codeData && (
+                                        <div className="mb-3 max-w-full overflow-hidden">
+                                          <CodePreview
+                                            code={message.codeData.code}
+                                            type={message.codeData.type}
+                                            framework={message.codeData.framework}
+                                            sourceCode={message.codeData.sourceCode}
+                                            language={message.codeData.language}
+                                          />
+                                        </div>
+                                      )}
+                                      {message.sender === "assistant" && (message.content || message.isStreaming) ? (
+                                        <AdvancedStreamingText
+                                          content={message.content}
+                                          isStreaming={message.isStreaming || false}
+                                          className="text-sm"
+                                        />
+                                      ) : !message.weatherData && !message.codeData ? (
+                                        <div
+                                          className="whitespace-pre-wrap"
+                                          dangerouslySetInnerHTML={{
+                                            __html: message.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                          }}
+                                        />
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        )}
+                          ))}
+
+                          <div ref={messagesEndRef} />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Chat Input */}
+                    <div className="flex-shrink-0 py-2 sm:py-3 w-full flex justify-center border-t border-gray-100 dark:border-neutral-800">
+                      <div className="grid w-full max-w-4xl px-2 sm:px-0">
+                        <Textarea
+                          value={inputValue}
+                          onChange={(e) => setInputValue(e.target.value)}
+                          onKeyDown={handleKeyPress}
+                          placeholder={isStreaming ? "Synergi is responding..." : "Type your message..."}
+                          className="[grid-area:1/1] w-full pt-2 sm:pt-3 pr-8 sm:pr-10 pb-2 sm:pb-3 text-sm rounded-lg focus:outline-none text-gray-900 dark:text-white resize-none min-h-[2.5rem] sm:min-h-[3rem] max-h-[5rem] sm:max-h-[6rem] overflow-y-auto placeholder:text-gray-500 dark:placeholder:text-gray-400 transition-colors bg-gray-50 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 focus:border-teal-500 dark:focus:border-teal-400"
+                          disabled={isStreaming}
+                        />
+                        <div className="[grid-area:1/1] pointer-events-none flex items-end justify-end p-1.5 sm:p-2">
+                          <Button
+                            onClick={handleSendMessage}
+                            disabled={!inputValue.trim() || isStreaming}
+                            className="pointer-events-auto bg-transparent hover:bg-transparent text-gray-800 dark:text-gray-200 rounded-md h-6 w-6 sm:h-7 sm:w-7 p-0 transition-all duration-200 border-0 shadow-none focus:shadow-none focus:ring-0 focus:outline-none"
+                          >
+                            {isStreaming ? (
+                              <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" />
+                            ) : (
+                              <Send className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                            )}
+                          </Button>
+                        </div>
                       </div>
-                    ))}
-
-                    <div ref={messagesEndRef} />
                     </div>
-                  )}
-                    </div>
-
-                {/* Chat Input */}
-                <div className="flex-shrink-0 py-2 sm:py-3 w-full flex justify-center border-t border-gray-100 dark:border-neutral-800">
-                  <div className="grid w-full max-w-4xl px-2 sm:px-0">
-                    <Textarea
-                      value={inputValue}
-                      onChange={(e) => setInputValue(e.target.value)}
-                      onKeyDown={handleKeyPress}
-                      placeholder={isStreaming ? "Synergi is responding..." : "Type your message..."}
-                      className="[grid-area:1/1] w-full pt-2 sm:pt-3 pr-8 sm:pr-10 pb-2 sm:pb-3 text-sm rounded-lg focus:outline-none text-gray-900 dark:text-white resize-none min-h-[2.5rem] sm:min-h-[3rem] max-h-[5rem] sm:max-h-[6rem] overflow-y-auto placeholder:text-gray-500 dark:placeholder:text-gray-400 transition-colors bg-gray-50 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 focus:border-teal-500 dark:focus:border-teal-400"
-                      disabled={isStreaming}
-                    />
-                    <div className="[grid-area:1/1] pointer-events-none flex items-end justify-end p-1.5 sm:p-2">
-                      <Button
-                        onClick={handleSendMessage}
-                        disabled={!inputValue.trim() || isStreaming}
-                        className="pointer-events-auto bg-transparent hover:bg-transparent text-gray-800 dark:text-gray-200 rounded-md h-6 w-6 sm:h-7 sm:w-7 p-0 transition-all duration-200 border-0 shadow-none focus:shadow-none focus:ring-0 focus:outline-none"
-                      >
-                        {isStreaming ? (
-                          <Loader2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" />
-                        ) : (
-                          <Send className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
                   </>
                 )}
               </div>

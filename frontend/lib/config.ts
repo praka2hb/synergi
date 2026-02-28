@@ -12,6 +12,7 @@ export const config = {
     chat: {
       send: '/api/chat/send',
       conversations: '/api/chat/conversations',
+      agents: '/api/chat/agents',
       messages: (conversationId: string) => `/api/chat/conversations/${conversationId}/messages`,
       delete: (conversationId: string) => `/api/chat/conversations/${conversationId}`,
     }

@@ -11,34 +11,33 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 model User {
-  id           String        @id @default(uuid())
-  email        String?       @unique
-  privyId      String?       @unique
-  walletAddress String?      @unique
-  name         String?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  
+  id            String   @id @default(uuid())
+  email         String?  @unique
+  privyId       String?  @unique
+  walletAddress String?  @unique
+  name          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
   // Relations
   conversations Conversation[]
-  messages     Message[]
+  messages      Message[]
 }
 
 model Conversation {
   id        String   @id @default(uuid())
-  title     String?  // Optional title for the conversation
+  title     String? // Optional title for the conversation
   userId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
   // Relations
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages Message[]
-  
+
   @@index([userId, updatedAt])
 }
 
@@ -48,12 +47,13 @@ model Message {
   userId         String
   content        String      @db.Text
   role           MessageRole
+  metadata       Json? // Tool call data: codeData, weatherData, etc.
   createdAt      DateTime    @default(now())
-  
+
   // Relations
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+
   @@index([conversationId, createdAt])
   @@index([userId, createdAt])
 }

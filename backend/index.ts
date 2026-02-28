@@ -3,6 +3,7 @@ import cors from "cors";
 import authRouter from "./routes/auth";
 import privyAuthRouter from "./routes/privy-auth";
 import chatRouter from "./routes/chat";
+import codeAssistantRouter from "./routes/codeAssistant";
 import { validateEnvironment } from "./env-check";
 
 // Validate environment variables at startup
@@ -14,7 +15,8 @@ app.use(express.json());
 
 app.use("/api/auth", authRouter);
 app.use("/api/privy", privyAuthRouter);
-app.use("/api/chat", chatRouter)
+app.use("/api/chat/code", codeAssistantRouter);
+app.use("/api/chat", chatRouter);
 
 app.get("/", (req, res) => {
     res.send("Hello World");

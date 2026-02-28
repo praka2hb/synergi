@@ -1,10 +1,13 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { streamText, generateText } from 'ai';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+const openrouter = createOpenRouter({
+  apiKey: process.env.OPENROUTER_API_KEY!,
+});
+
+const MODEL = 'openrouter/free';
 
 export class GeminiService {
-  private model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-  
   private readonly systemContext = `You are Synergi, a Multi-Agent AI assistant designed to help users with various tasks through intelligent collaboration. You embody the synergy of multiple AI capabilities working together seamlessly.
 
     Key characteristics:
@@ -18,117 +21,66 @@ export class GeminiService {
 
   async generateResponse(messages: Array<{ role: string; content: string }>): Promise<string> {
     try {
-      // Convert messages to Gemini format and include system context
-      const geminiMessages = this.formatMessagesForGemini(messages);
-      
-      const chat = this.model.startChat({
-        history: geminiMessages,
+      const { text } = await generateText({
+        model: openrouter(MODEL),
+        system: this.systemContext,
+        messages: messages.map(m => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        })),
       });
-
-      // Get the latest user message
-      const latestMessage = messages[messages.length - 1];
-      if (latestMessage.role !== 'user') {
-        throw new Error('Latest message must be from user');
-      }
-
-      const result = await chat.sendMessage(latestMessage.content);
-      const response = await result.response;
-      return response.text();
+      return text;
     } catch (error) {
-      console.error('Error generating response from Gemini:', error);
+      console.error('Error generating response:', error);
       throw new Error('Failed to generate AI response');
     }
   }
 
   async generateResponseStream(
     messages: Array<{ role: string; content: string }>,
-    onChunk: (chunk: string) => void
+    onChunk: (chunk: string) => void,
+    systemPromptOverride?: string
   ): Promise<string> {
     try {
-      // Convert messages to Gemini format and include system context
-      const geminiMessages = this.formatMessagesForGemini(messages);
-      
-      const chat = this.model.startChat({
-        history: geminiMessages,
+      const result = streamText({
+        model: openrouter(MODEL),
+        system: systemPromptOverride ?? this.systemContext,
+        messages: messages.map(m => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        })),
       });
 
-      // Get the latest user message
-      const latestMessage = messages[messages.length - 1];
-      if (latestMessage.role !== 'user') {
-        throw new Error('Latest message must be from user');
-      }
-
-      const result = await chat.sendMessageStream(latestMessage.content);
       let fullResponse = '';
-
-      for await (const chunk of result.stream) {
-        const chunkText = chunk.text();
-        if (chunkText) {
-          fullResponse += chunkText;
-          onChunk(chunkText);
-        }
+      for await (const chunk of result.textStream) {
+        fullResponse += chunk;
+        onChunk(chunk);
       }
-
       return fullResponse;
     } catch (error) {
-      console.error('Error generating streaming response from Gemini:', error);
+      console.error('Error generating streaming response:', error);
       throw new Error('Failed to generate AI response');
     }
   }
 
-  private formatMessagesForGemini(messages: Array<{ role: string; content: string }>) {
-    const history: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
-    
-    // Add system context as the first user message and model response
-    history.push({
-      role: 'user',
-      parts: [{ text: 'Please introduce yourself and explain your capabilities.' }]
-    });
-    
-    history.push({
-      role: 'model',
-      parts: [{ text: this.systemContext }]
-    });
+  generateConversationTitle(messages: Array<{ role: string; content: string }>): string {
+    const firstUserMessage = messages.find(m => m.role === 'user')?.content?.trim();
+    if (!firstUserMessage) return 'New Conversation';
 
-    // Convert conversation messages (skip the last user message as it will be sent separately)
-    const conversationMessages = messages.slice(0, -1);
-    
-    for (const message of conversationMessages) {
-      if (message.role === 'user') {
-        history.push({
-          role: 'user',
-          parts: [{ text: message.content }]
-        });
-      } else if (message.role === 'assistant') {
-        history.push({
-          role: 'model',
-          parts: [{ text: message.content }]
-        });
-      }
-      // Skip system messages as they're handled separately
-    }
+    // Strip markdown, code fences, and URLs
+    const cleaned = firstUserMessage
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/`[^`]+`/g, '')
+      .replace(/https?:\/\/\S+/g, '')
+      .replace(/[#*_>\[\]]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
 
-    return history;
-  }
-
-  async generateConversationTitle(messages: Array<{ role: string; content: string }>): Promise<string> {
-    try {
-      const firstUserMessage = messages.find(m => m.role === 'user')?.content;
-      if (!firstUserMessage) {
-        return 'New Conversation';
-      }
-
-      const prompt = `Generate a short, descriptive title (maximum 6 words) for a conversation that starts with: "${firstUserMessage}". Only return the title, nothing else.`;
-      
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const title = response.text().trim().replace(/"/g, '');
-      
-      return title.length > 50 ? title.substring(0, 47) + '...' : title;
-    } catch (error) {
-      console.error('Error generating conversation title:', error);
-      return 'New Conversation';
-    }
+    // Take first 6 words, capitalise first letter
+    const words = cleaned.split(' ').filter(Boolean).slice(0, 6);
+    if (words.length === 0) return 'New Conversation';
+    const title = words.join(' ');
+    return (title.charAt(0).toUpperCase() + title.slice(1)).substring(0, 60);
   }
 }
 
