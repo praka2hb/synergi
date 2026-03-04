@@ -1,18 +1,17 @@
 {
   "compilerOptions": {
-    // Enable latest features
+    // Target Node.js (required for Vercel serverless runtime)
     "lib": ["ESNext", "DOM"],
     "target": "ESNext",
-    "module": "ESNext",
+    "module": "CommonJS",
     "moduleDetection": "force",
     "jsx": "react-jsx",
     "allowJs": true,
 
-    // Bundler mode
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "noEmit": true,
+    // Node module resolution (required for @vercel/node)
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "outDir": "dist",
 
     // Best practices
     "strict": true,
@@ -23,5 +22,7 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
-  }
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }

@@ -7,10 +7,13 @@ import codeAssistantRouter from "./routes/codeAssistant";
 import { validateEnvironment } from "./env-check";
 
 // Validate environment variables at startup
-const config = validateEnvironment();
+validateEnvironment();
 
 const app = express();
-app.use(cors());
+
+// CORS — allow all origins in dev; restrict in production via ALLOWED_ORIGIN env var
+const allowedOrigin = process.env.ALLOWED_ORIGIN || "*";
+app.use(cors({ origin: allowedOrigin }));
 app.use(express.json());
 
 app.use("/api/auth", authRouter);
@@ -18,10 +21,18 @@ app.use("/api/privy", privyAuthRouter);
 app.use("/api/chat/code", codeAssistantRouter);
 app.use("/api/chat", chatRouter);
 
-app.get("/", (req, res) => {
-    res.send("Hello World");
+app.get("/", (_req, res) => {
+    res.send("Synergi API is running ✅");
 });
 
-app.listen(3001, () => {
-    console.log("Server is running on port 3001");
-});
+// Only bind a port when running locally (Vercel handles routing via the export)
+if (!process.env.VERCEL) {
+    const PORT = process.env.PORT || 3001;
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+    });
+}
+
+// Export app for Vercel serverless runtime
+export default app;
+
