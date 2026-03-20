@@ -126,6 +126,10 @@ router.post("/signin", async (req, res) => {
     })
 })
 
+router.get("/health", (req, res) => {
+    res.status(200).json({ status: "ok" });
+});
+
 router.get("/me", authMiddleware, async (req, res) => {
     const user = await prismaClient.user.findUnique({
         where: { id: req.userId }
