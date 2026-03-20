@@ -30,8 +30,10 @@ export function validateEnvironment(): EnvConfig {
     
     if (missing.length > 0) {
         console.error('❌ Missing required environment variables:');
-        missing.forEach(env => console.error(`  - ${env}`));
-        process.exit(1);
+        missing.forEach((env) => console.error(`  - ${env}`));
+        throw new Error(
+            `Missing required environment variables: ${missing.join(', ')}`,
+        );
     }
     
     if (warnings.length > 0) {
