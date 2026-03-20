@@ -2,21 +2,24 @@ import { z } from "zod";
 
 // Extend Express Request interface
 declare global {
-    namespace Express {
-        interface Request {
-            userId: string; // Make required since auth middleware ensures it's set
-        }
+  namespace Express {
+    interface Request {
+      userId: string; // Make required since auth middleware ensures it's set
     }
+  }
 }
 
 export const CreateUser = z.object({
-    email: z.email(),
-})
+  email: z.email(),
+});
 
 export const SignIn = z.object({
-    email: z.email(),
-    otp: z.string().or(z.number().int()),
-})
+  email: z.email(),
+  otp: z.coerce
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, "OTP must be a 6-digit code"),
+});
 
 // Chat validation schemas
 export const sendMessageSchema = z.object({
@@ -26,7 +29,12 @@ export const sendMessageSchema = z.object({
 
 export const getMessagesSchema = z.object({
   conversationId: z.uuid(),
-  page: z.string().optional().transform(val => val ? parseInt(val) : 1),
-  limit: z.string().optional().transform(val => val ? parseInt(val) : 50),
+  page: z
+    .string()
+    .optional()
+    .transform((val) => (val ? parseInt(val) : 1)),
+  limit: z
+    .string()
+    .optional()
+    .transform((val) => (val ? parseInt(val) : 50)),
 });
-

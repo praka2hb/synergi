@@ -1,0 +1,71 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.getAllowedOrigins = getAllowedOrigins;
+exports.isOriginAllowed = isOriginAllowed;
+exports.getCorsOptions = getCorsOptions;
+exports.applySseCorsHeaders = applySseCorsHeaders;
+exports.writeSseHeaders = writeSseHeaders;
+function parseAllowedOrigins() {
+    const raw = process.env.ALLOWED_ORIGIN?.trim();
+    if (!raw || raw === "*") {
+        return ["*"];
+    }
+    return raw
+        .split(",")
+        .map((origin) => origin.trim())
+        .filter(Boolean);
+}
+function getAllowedOrigins() {
+    return parseAllowedOrigins();
+}
+function isOriginAllowed(origin) {
+    const allowedOrigins = parseAllowedOrigins();
+    if (allowedOrigins.includes("*")) {
+        return true;
+    }
+    if (!origin) {
+        return false;
+    }
+    return allowedOrigins.includes(origin);
+}
+function getCorsOptions() {
+    const allowedOrigins = parseAllowedOrigins();
+    const allowAll = allowedOrigins.includes("*");
+    return {
+        origin(origin, callback) {
+            if (allowAll) {
+                callback(null, true);
+                return;
+            }
+            if (!origin) {
+                callback(null, true);
+                return;
+            }
+            if (allowedOrigins.includes(origin)) {
+                callback(null, true);
+                return;
+            }
+            callback(new Error("Origin not allowed by CORS"));
+        },
+    };
+}
+function applySseCorsHeaders(reqOrigin, res) {
+    const allowedOrigins = parseAllowedOrigins();
+    const allowAll = allowedOrigins.includes("*");
+    if (allowAll) {
+        res.setHeader("Access-Control-Allow-Origin", "*");
+    }
+    else if (reqOrigin && allowedOrigins.includes(reqOrigin)) {
+        res.setHeader("Access-Control-Allow-Origin", reqOrigin);
+        res.setHeader("Vary", "Origin");
+    }
+    res.setHeader("Access-Control-Allow-Headers", "Authorization, Cache-Control, Content-Type");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+}
+function writeSseHeaders(res, reqOrigin) {
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    applySseCorsHeaders(reqOrigin, res);
+    res.flushHeaders?.();
+}
