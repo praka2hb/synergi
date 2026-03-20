@@ -6,7 +6,7 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { streamText, tool, stepCountIs, zodSchema } from "ai";
 import { z } from "zod";
-import { Sandbox } from "@e2b/code-interpreter";
+import { loadE2bCodeInterpreter } from "../lib/loadE2bCodeInterpreter";
 
 const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY! });
 const MODEL = "openrouter/auto";
@@ -71,7 +71,8 @@ export const codeAssistantAgent = async (
                     })
                 ),
                 execute: async ({ language, code }: { language: "python" | "javascript"; code: string }) => {
-                    let sandbox: Sandbox | null = null;
+                    const { Sandbox } = await loadE2bCodeInterpreter();
+                    let sandbox: InstanceType<typeof Sandbox> | null = null;
                     try {
                         sandbox = await Sandbox.create();
 

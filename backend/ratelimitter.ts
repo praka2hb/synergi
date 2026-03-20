@@ -1,4 +1,13 @@
-import rateLimit from "express-rate-limit";
+import type { Request } from "express";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
+
+function rateLimitKey(req: Request): string {
+  const email = req.body?.email;
+  if (typeof email === "string" && email.length > 0) {
+    return email;
+  }
+  return ipKeyGenerator(req.ip ?? "");
+}
 
 // per-minute limiter
 export const perMinuteLimiter = rateLimit({
@@ -7,9 +16,7 @@ export const perMinuteLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: "Too many requests. Try again in a minute.",
-  keyGenerator: (req) => {
-    return req.body?.email || req.ip;
-  },
+  keyGenerator: rateLimitKey,
   validate: {
     xForwardedForHeader: false,
   },
@@ -22,9 +29,7 @@ export const perMinuteLimiterRelaxed = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: "Too many requests. Try again in an hour.",
-  keyGenerator: (req) => {
-    return req.body?.email || req.ip;
-  },
+  keyGenerator: rateLimitKey,
   validate: {
     xForwardedForHeader: false,
   },
