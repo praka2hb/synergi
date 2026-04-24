@@ -1,23 +1,25 @@
 /**
- * LLM-based agent router using OpenRouter free models.
+ * LLM-based agent router using OpenAI models.
  * Uses generateText with a JSON-formatted prompt (works with ALL models,
  * no structured output / tool calling support required).
  */
 
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
+import { guardOpenAIError, hasOpenAIAuthFailure } from "../lib/openaiGuard";
 
-const openrouter = createOpenRouter({
-    apiKey: process.env.OPENROUTER_API_KEY!,
+const openai = createOpenAI({
+  apiKey: process.env.OPENAI_API_KEY!,
 });
 
-const ROUTER_MODEL = "openrouter/auto";
+const ROUTER_MODEL =
+  process.env.OPENAI_ROUTER_MODEL || process.env.OPENAI_MODEL || "gpt-5";
 
 export interface LLMRoutingResult {
-    agent: "weather" | "web_search" | "code_assistant" | "general";
-    confidence: number;
-    reason: string;
-    extractedCity?: string;
+  agent: "weather" | "web_search" | "code_assistant" | "general";
+  confidence: number;
+  reason: string;
+  extractedCity?: string;
 }
 
 const ROUTING_SYSTEM_PROMPT = `You are an intelligent query router for a multi-agent AI system. Analyze the user's message and decide which agent should handle it.
@@ -43,55 +45,67 @@ You MUST respond with ONLY a valid JSON object in this exact format, nothing els
  * Route a user message to the appropriate agent using an LLM call.
  */
 export async function llmRouteToAgent(
-    message: string,
-    _conversationContext?: Array<{ role: string; content: string }>
+  message: string,
+  _conversationContext?: Array<{ role: string; content: string }>,
 ): Promise<LLMRoutingResult> {
-    try {
-        const { text } = await generateText({
-            model: openrouter(ROUTER_MODEL),
-            system: ROUTING_SYSTEM_PROMPT,
-            prompt: `Route this user message to the correct agent. Respond with ONLY valid JSON, no other text.\n\nUser message: "${message}"`,
-        });
+  if (hasOpenAIAuthFailure()) {
+    return fallback("OpenAI auth unavailable");
+  }
 
-        // Parse the JSON from the response — handle potential markdown wrapping
-        const cleanedText = text
-            .replace(/```json\s*/gi, "")
-            .replace(/```\s*/g, "")
-            .trim();
+  try {
+    const { text } = await generateText({
+      model: openai(ROUTER_MODEL),
+      system: ROUTING_SYSTEM_PROMPT,
+      prompt: `Route this user message to the correct agent. Respond with ONLY valid JSON, no other text.\n\nUser message: "${message}"`,
+    });
 
-        // Find the JSON object in the response
-        const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-            console.error("LLM router: No JSON found in response:", text);
-            return fallback("No JSON in LLM response");
-        }
+    // Parse the JSON from the response — handle potential markdown wrapping
+    const cleanedText = text
+      .replace(/```json\s*/gi, "")
+      .replace(/```\s*/g, "")
+      .trim();
 
-        const parsed = JSON.parse(jsonMatch[0]);
-
-        // Validate the agent field
-        const validAgents = ["weather", "web_search", "code_assistant", "general"];
-        if (!validAgents.includes(parsed.agent)) {
-            console.error("LLM router: Invalid agent:", parsed.agent);
-            return fallback("Invalid agent in response");
-        }
-
-        return {
-            agent: parsed.agent,
-            confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.8,
-            reason: parsed.reason || "LLM classification",
-            extractedCity: parsed.extractedCity || undefined,
-        };
-    } catch (error) {
-        console.error("LLM routing failed, falling back to general:", error);
-        return fallback("LLM routing error");
+    // Find the JSON object in the response
+    const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error("LLM router: No JSON found in response:", text);
+      return fallback("No JSON in LLM response");
     }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    // Validate the agent field
+    const validAgents = ["weather", "web_search", "code_assistant", "general"];
+    if (!validAgents.includes(parsed.agent)) {
+      console.error("LLM router: Invalid agent:", parsed.agent);
+      return fallback("Invalid agent in response");
+    }
+
+    return {
+      agent: parsed.agent,
+      confidence:
+        typeof parsed.confidence === "number" ? parsed.confidence : 0.8,
+      reason: parsed.reason || "LLM classification",
+      extractedCity: parsed.extractedCity || undefined,
+    };
+  } catch (error: any) {
+    if (guardOpenAIError(error)) {
+      console.error(
+        "LLM router: OpenAI authentication failed. Falling back to local/general routing until credentials are fixed.",
+      );
+      return fallback("OpenAI auth failed");
+    }
+
+    console.error("LLM routing failed, falling back to general:", error);
+    return fallback("LLM routing error");
+  }
 }
 
 function fallback(reason: string): LLMRoutingResult {
-    return {
-        agent: "general",
-        confidence: 0.5,
-        reason: `Fallback: ${reason}`,
-        extractedCity: undefined,
-    };
+  return {
+    agent: "general",
+    confidence: 0.5,
+    reason: `Fallback: ${reason}`,
+    extractedCity: undefined,
+  };
 }

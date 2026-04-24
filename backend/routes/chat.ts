@@ -13,6 +13,11 @@ import {
   getAvailableAgents,
 } from "../agents";
 import { generateDocument } from "../agents/documentAgent.js";
+import {
+  guardOpenAIError,
+  getOpenAIUnavailableMessage,
+  hasOpenAIAuthFailure,
+} from "../lib/openaiGuard";
 
 const router = Router();
 
@@ -204,115 +209,155 @@ router.post("/send", authMiddleware, async (req: Request, res: Response) => {
       }
     } else if (routingResult.agent === "web_search") {
       // Use the web search agent — intercept fullStream for text
-      const result = await webSearchAgent(message, messageHistory.slice(0, -1));
-      aiResponse = "";
-      for await (const part of result.fullStream) {
-        if (part.type === "text-delta") {
-          aiResponse += part.text;
-          sendEvent("ai_chunk", { chunk: part.text });
+      try {
+        if (hasOpenAIAuthFailure()) {
+          aiResponse = getOpenAIUnavailableMessage();
+          sendEvent("ai_chunk", { chunk: aiResponse });
+        } else {
+          const result = await webSearchAgent(
+            message,
+            messageHistory.slice(0, -1),
+          );
+          aiResponse = "";
+          for await (const part of result.fullStream) {
+            if (part.type === "text-delta") {
+              aiResponse += part.text;
+              sendEvent("ai_chunk", { chunk: part.text });
+            }
+          }
+        }
+      } catch (error) {
+        if (guardOpenAIError(error)) {
+          aiResponse = getOpenAIUnavailableMessage();
+          sendEvent("ai_chunk", { chunk: aiResponse });
+        } else {
+          throw error;
         }
       }
     } else if (routingResult.agent === "code_assistant") {
       // Use the code assistant agent — stream tool calls, results, and text
-      const result = await codeAssistantAgent(
-        message,
-        messageHistory.slice(0, -1),
-      );
-      aiResponse = "";
-      const toolResultSummaries: string[] = [];
-      let codeMetadata: Record<string, any> = {};
+      try {
+        if (hasOpenAIAuthFailure()) {
+          aiResponse = getOpenAIUnavailableMessage();
+          sendEvent("ai_chunk", { chunk: aiResponse });
+        } else {
+          const result = await codeAssistantAgent(
+            message,
+            messageHistory.slice(0, -1),
+          );
+          aiResponse = "";
+          const toolResultSummaries: string[] = [];
+          let codeMetadata: Record<string, any> = {};
 
-      for await (const part of result.fullStream) {
-        if (part.type === "text-delta") {
-          aiResponse += part.text;
-          sendEvent("ai_chunk", { chunk: part.text });
-        } else if (part.type === "tool-call") {
-          const args = (part as any).args ?? (part as any).input;
-          sendEvent("tool_call", {
-            toolName: part.toolName,
-            args,
-          });
+          for await (const part of result.fullStream) {
+            if (part.type === "text-delta") {
+              aiResponse += part.text;
+              sendEvent("ai_chunk", { chunk: part.text });
+            } else if (part.type === "tool-call") {
+              const args = (part as any).args ?? (part as any).input;
+              sendEvent("tool_call", {
+                toolName: part.toolName,
+                args,
+              });
 
-          // Capture source code for persistence
-          if (part.toolName === "executeCode" && args) {
-            codeMetadata = {
-              type: "output",
-              sourceCode: args.code || "",
-              language: args.language || "python",
-            };
+              // Capture source code for persistence
+              if (part.toolName === "executeCode" && args) {
+                codeMetadata = {
+                  type: "output",
+                  sourceCode: args.code || "",
+                  language: args.language || "python",
+                };
+              }
+            } else if (part.type === "tool-result") {
+              const toolResult = (part as any).result ?? (part as any).output;
+              sendEvent("tool_result", {
+                toolName: part.toolName,
+                result: toolResult,
+              });
+
+              // Build a summary for the saved message and collect metadata
+              if (part.toolName === "executeCode") {
+                const output =
+                  toolResult?.output || toolResult?.error || "(no output)";
+                toolResultSummaries.push(
+                  `**Code Output:**\n\`\`\`\n${output}\n\`\`\``,
+                );
+                codeMetadata.code = output;
+              } else if (part.toolName === "generateUI") {
+                toolResultSummaries.push(
+                  `*UI generated as ${toolResult?.framework === "react" ? "React component" : "HTML page"}. See live preview above.*`,
+                );
+                codeMetadata = {
+                  type: "ui",
+                  code: toolResult?.code || "",
+                  framework: toolResult?.framework || "html",
+                };
+              }
+            }
           }
-        } else if (part.type === "tool-result") {
-          const toolResult = (part as any).result ?? (part as any).output;
-          sendEvent("tool_result", {
-            toolName: part.toolName,
-            result: toolResult,
-          });
 
-          // Build a summary for the saved message and collect metadata
-          if (part.toolName === "executeCode") {
-            const output =
-              toolResult?.output || toolResult?.error || "(no output)";
-            toolResultSummaries.push(
-              `**Code Output:**\n\`\`\`\n${output}\n\`\`\``,
-            );
-            codeMetadata.code = output;
-          } else if (part.toolName === "generateUI") {
-            toolResultSummaries.push(
-              `*UI generated as ${toolResult?.framework === "react" ? "React component" : "HTML page"}. See live preview above.*`,
-            );
-            codeMetadata = {
-              type: "ui",
-              code: toolResult?.code || "",
-              framework: toolResult?.framework || "html",
-            };
+          messageMetadata = { codeData: codeMetadata };
+
+          // If no text was streamed but we got tool results, use the summaries
+          if (!aiResponse.trim() && toolResultSummaries.length > 0) {
+            aiResponse = toolResultSummaries.join("\n\n");
+          } else if (toolResultSummaries.length > 0) {
+            aiResponse = toolResultSummaries.join("\n\n") + "\n\n" + aiResponse;
           }
         }
-      }
-
-      messageMetadata = { codeData: codeMetadata };
-
-      // If no text was streamed but we got tool results, use the summaries
-      if (!aiResponse.trim() && toolResultSummaries.length > 0) {
-        aiResponse = toolResultSummaries.join("\n\n");
-      } else if (toolResultSummaries.length > 0) {
-        aiResponse = toolResultSummaries.join("\n\n") + "\n\n" + aiResponse;
+      } catch (error) {
+        if (guardOpenAIError(error)) {
+          aiResponse = getOpenAIUnavailableMessage();
+          sendEvent("ai_chunk", { chunk: aiResponse });
+        } else {
+          throw error;
+        }
       }
     } else if (routingResult.agent === "financial") {
       // Dedicated financial agent — forward live chunks while preserving structured metadata
       try {
-        const financialResult = await handleFinancialQuery(
-          message,
-          messageHistory.slice(0, -1),
-          [],
-          {
-            onChunk: async (chunk: string) => {
-              aiResponse += chunk;
-              sendEvent("ai_chunk", { chunk });
-            },
-          },
-        );
-
-        if (!aiResponse.trim()) {
-          aiResponse =
-            financialResult?.text ||
-            "I could not prepare a financial response right now.";
+        if (hasOpenAIAuthFailure()) {
+          aiResponse = getOpenAIUnavailableMessage();
           sendEvent("ai_chunk", { chunk: aiResponse });
+        } else {
+          const financialResult = await handleFinancialQuery(
+            message,
+            messageHistory.slice(0, -1),
+            [],
+            {
+              onChunk: async (chunk: string) => {
+                aiResponse += chunk;
+                sendEvent("ai_chunk", { chunk });
+              },
+            },
+          );
+
+          if (!aiResponse.trim()) {
+            aiResponse =
+              financialResult?.text ||
+              "I could not prepare a financial response right now.";
+            sendEvent("ai_chunk", { chunk: aiResponse });
+          }
+
+          messageMetadata = {
+            financialData: {
+              stockData: financialResult?.stockData ?? null,
+              verdict: financialResult?.verdict ?? null,
+              news: financialResult?.news ?? [],
+              action: financialResult?.action ?? null,
+            },
+          };
+
+          sendEvent("financial_data", messageMetadata.financialData);
         }
-
-        messageMetadata = {
-          financialData: {
-            stockData: financialResult?.stockData ?? null,
-            verdict: financialResult?.verdict ?? null,
-            news: financialResult?.news ?? [],
-            action: financialResult?.action ?? null,
-          },
-        };
-
-        sendEvent("financial_data", messageMetadata.financialData);
       } catch (err: any) {
-        aiResponse =
-          err?.message ||
-          "I couldn't process that financial query right now. Try again with an NSE ticker like TCS or INFY.";
+        if (guardOpenAIError(err)) {
+          aiResponse = getOpenAIUnavailableMessage();
+        } else {
+          aiResponse =
+            err?.message ||
+            "I couldn't process that financial query right now. Try again with an NSE ticker like TCS or INFY.";
+        }
         sendEvent("ai_chunk", { chunk: aiResponse });
       }
     } else if (routingResult.agent === "document_generate") {

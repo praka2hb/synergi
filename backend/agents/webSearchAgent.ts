@@ -1,8 +1,8 @@
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, tool, stepCountIs, zodSchema } from "ai";
 
-const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY! });
-const MODEL = "openrouter/free";
+const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+const MODEL = process.env.OPENAI_MODEL || "gpt-5";
 import { tavily } from "@tavily/core";
 import { z } from "zod";
 
@@ -10,7 +10,7 @@ const tavilyClient = tavily({ apiKey: process.env.TAVILY_API_KEY! });
 
 export const webSearchAgent = async (
   userMessage: string,
-  messageHistory: Array<{ role: string; content: string }> = []
+  messageHistory: Array<{ role: string; content: string }> = [],
 ) => {
   // Build messages array: include history + latest user message
   const messages = [
@@ -22,7 +22,7 @@ export const webSearchAgent = async (
   ];
 
   return streamText({
-    model: openrouter(MODEL),
+    model: openai(MODEL),
     system: `You are Synergi's Web Search Agent — a specialized assistant within the Synergi Multi-Agent system.
 
 Your capabilities:
@@ -46,7 +46,7 @@ Guidelines:
             query: z
               .string()
               .describe("The search query to find relevant information"),
-          })
+          }),
         ),
         execute: async ({ query }: { query: string }) => {
           const results = await tavilyClient.search(query, {

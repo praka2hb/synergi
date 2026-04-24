@@ -6,8 +6,8 @@ const {
   getStockNews,
 } = require("../lib/stock_fetcher.js");
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
-const OPENROUTER_MODEL = "openrouter/auto";
+const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const MAX_TOKENS = 1500;
 const STREAM_DECODER = new TextDecoder();
 
@@ -510,14 +510,14 @@ function buildContextBlock({
   ].join("\n");
 }
 
-async function callOpenRouter(
+async function callOpenAI(
   systemPrompt,
   conversationHistory,
   userMessage,
   contextBlock,
   options = {},
 ) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
     return null;
@@ -526,7 +526,7 @@ async function callOpenRouter(
   const safeHistory = normalizeHistory(conversationHistory);
 
   const body = {
-    model: OPENROUTER_MODEL,
+    model: OPENAI_MODEL,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "system", content: contextBlock },
@@ -538,12 +538,10 @@ async function callOpenRouter(
   };
 
   try {
-    const response = await fetch(OPENROUTER_URL, {
+    const response = await fetch(OPENAI_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://synergi.app",
-        "X-Title": "Synergi",
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -843,7 +841,7 @@ async function handleFinancialQuery(
     action,
   });
 
-  const llmText = await callOpenRouter(
+  const llmText = await callOpenAI(
     systemPrompt,
     conversationHistory,
     userMessage,

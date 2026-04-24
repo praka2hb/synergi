@@ -1,15 +1,15 @@
 /**
  * Code Assistant Agent — handles code execution (E2B) and UI generation.
- * Uses OpenRouter free model via Vercel AI SDK.
+ * Uses OpenAI via Vercel AI SDK.
  */
 
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { createOpenAI } from "@ai-sdk/openai";
 import { streamText, tool, stepCountIs, zodSchema } from "ai";
 import { z } from "zod";
 import { loadE2bCodeInterpreter } from "../lib/loadE2bCodeInterpreter";
 
-const openrouter = createOpenRouter({ apiKey: process.env.OPENROUTER_API_KEY! });
-const MODEL = "openrouter/auto";
+const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+const MODEL = process.env.OPENAI_MODEL || "gpt-5";
 
 const SYSTEM_PROMPT = `You are Synergi's Code Assistant — a specialized agent within the Synergi Multi-Agent system.
 
@@ -41,105 +41,119 @@ IMPORTANT RULES:
 - After the tool result, provide a brief explanation of what was done.`;
 
 export const codeAssistantAgent = async (
-    userMessage: string,
-    messageHistory: Array<{ role: string; content: string }> = []
+  userMessage: string,
+  messageHistory: Array<{ role: string; content: string }> = [],
 ) => {
-    const messages = [
-        ...messageHistory.map((m) => ({
-            role: m.role as "user" | "assistant",
-            content: m.content,
-        })),
-        { role: "user" as const, content: userMessage },
-    ];
+  const messages = [
+    ...messageHistory.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    })),
+    { role: "user" as const, content: userMessage },
+  ];
 
-    return streamText({
-        model: openrouter(MODEL),
-        system: SYSTEM_PROMPT,
-        messages,
-        tools: {
-            executeCode: tool({
-                description:
-                    "Execute code in a secure sandbox and return the output. Use for algorithms, scripts, calculations, data processing — anything that needs to RUN.",
-                inputSchema: zodSchema(
-                    z.object({
-                        language: z
-                            .enum(["python", "javascript"])
-                            .describe("The programming language to execute"),
-                        code: z
-                            .string()
-                            .describe("The complete code to execute. Must print/log output."),
-                    })
-                ),
-                execute: async ({ language, code }: { language: "python" | "javascript"; code: string }) => {
-                    const { Sandbox } = await loadE2bCodeInterpreter();
-                    let sandbox: InstanceType<typeof Sandbox> | null = null;
-                    try {
-                        sandbox = await Sandbox.create();
+  return streamText({
+    model: openai(MODEL),
+    system: SYSTEM_PROMPT,
+    messages,
+    tools: {
+      executeCode: tool({
+        description:
+          "Execute code in a secure sandbox and return the output. Use for algorithms, scripts, calculations, data processing — anything that needs to RUN.",
+        inputSchema: zodSchema(
+          z.object({
+            language: z
+              .enum(["python", "javascript"])
+              .describe("The programming language to execute"),
+            code: z
+              .string()
+              .describe("The complete code to execute. Must print/log output."),
+          }),
+        ),
+        execute: async ({
+          language,
+          code,
+        }: {
+          language: "python" | "javascript";
+          code: string;
+        }) => {
+          const { Sandbox } = await loadE2bCodeInterpreter();
+          let sandbox: InstanceType<typeof Sandbox> | null = null;
+          try {
+            sandbox = await Sandbox.create();
 
-                        let execution;
-                        if (language === "python") {
-                            execution = await sandbox.runCode(code);
-                        } else {
-                            execution = await sandbox.runCode(code, { language: "javascript" });
-                        }
+            let execution;
+            if (language === "python") {
+              execution = await sandbox.runCode(code);
+            } else {
+              execution = await sandbox.runCode(code, {
+                language: "javascript",
+              });
+            }
 
-                        const stdout = execution.logs.stdout.join("\n");
-                        const stderr = execution.logs.stderr.join("\n");
+            const stdout = execution.logs.stdout.join("\n");
+            const stderr = execution.logs.stderr.join("\n");
 
-                        if (execution.error) {
-                            return {
-                                success: false,
-                                error: execution.error.name + ": " + execution.error.value,
-                                stdout: stdout || undefined,
-                                stderr: stderr || undefined,
-                            };
-                        }
+            if (execution.error) {
+              return {
+                success: false,
+                error: execution.error.name + ": " + execution.error.value,
+                stdout: stdout || undefined,
+                stderr: stderr || undefined,
+              };
+            }
 
-                        return {
-                            success: true,
-                            output: stdout || "(no output)",
-                            stderr: stderr || undefined,
-                        };
-                    } catch (err: any) {
-                        return {
-                            success: false,
-                            error: `Sandbox error: ${err.message || "Unknown error"}`,
-                        };
-                    } finally {
-                        if (sandbox) {
-                            await sandbox.kill().catch(() => { });
-                        }
-                    }
-                },
-            }),
-
-            generateUI: tool({
-                description:
-                    "Generate a UI component or webpage. Use for landing pages, dashboards, forms, cards — anything visual. Returns code for live preview, does NOT execute it.",
-                inputSchema: zodSchema(
-                    z.object({
-                        code: z
-                            .string()
-                            .describe(
-                                "The complete HTML (with Tailwind CDN) or React component code"
-                            ),
-                        framework: z
-                            .enum(["html", "react"])
-                            .describe(
-                                "The framework used. Use 'html' for standalone HTML pages (default), 'react' only if user explicitly asks for React."
-                            ),
-                    })
-                ),
-                execute: async ({ code, framework }: { code: string; framework: "html" | "react" }) => {
-                    return {
-                        success: true,
-                        code,
-                        framework,
-                        message: `UI generated as ${framework === "react" ? "React component" : "HTML page"}. Rendering in live preview.`,
-                    };
-                },
-            }),
+            return {
+              success: true,
+              output: stdout || "(no output)",
+              stderr: stderr || undefined,
+            };
+          } catch (err: any) {
+            return {
+              success: false,
+              error: `Sandbox error: ${err.message || "Unknown error"}`,
+            };
+          } finally {
+            if (sandbox) {
+              await sandbox.kill().catch(() => {});
+            }
+          }
         },
-        stopWhen: stepCountIs(5),
-    });
+      }),
+
+      generateUI: tool({
+        description:
+          "Generate a UI component or webpage. Use for landing pages, dashboards, forms, cards — anything visual. Returns code for live preview, does NOT execute it.",
+        inputSchema: zodSchema(
+          z.object({
+            code: z
+              .string()
+              .describe(
+                "The complete HTML (with Tailwind CDN) or React component code",
+              ),
+            framework: z
+              .enum(["html", "react"])
+              .describe(
+                "The framework used. Use 'html' for standalone HTML pages (default), 'react' only if user explicitly asks for React.",
+              ),
+          }),
+        ),
+        execute: async ({
+          code,
+          framework,
+        }: {
+          code: string;
+          framework: "html" | "react";
+        }) => {
+          return {
+            success: true,
+            code,
+            framework,
+            message: `UI generated as ${framework === "react" ? "React component" : "HTML page"}. Rendering in live preview.`,
+          };
+        },
+      }),
+    },
+    stopWhen: stepCountIs(5),
+  });
 };
