@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useState, useEffect, ReactNode, useCallback } from "react"
+import { createContext, useState, useEffect, ReactNode, useCallback, useRef } from "react"
 import { usePrivy } from '@privy-io/react-auth';
 import { toast } from "sonner";
 
@@ -29,6 +29,7 @@ export function PrivyAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [token, setToken] = useState<string | null>(null)
+  const shouldToastOnNextSyncRef = useRef(false)
 
   // Sync Privy user to our database
   const syncUser = useCallback(async () => {
@@ -61,17 +62,25 @@ export function PrivyAuthProvider({ children }: { children: ReactNode }) {
 
       if (response.ok) {
         const data = await response.json();
+
         setUser(data.user);
         setToken(data.token);
         localStorage.setItem("auth-token", data.token);
-        toast.success("Successfully authenticated!");
+
+        // Only show the auth success toast when the user explicitly initiated login.
+        if (shouldToastOnNextSyncRef.current) {
+          toast.success("Successfully authenticated!");
+          shouldToastOnNextSyncRef.current = false;
+        }
       } else {
         const errorData = await response.json();
+        shouldToastOnNextSyncRef.current = false;
         toast.error(errorData.message || "Failed to sync user");
         privyLogout();
       }
     } catch (error) {
       console.error("Failed to sync user:", error);
+      shouldToastOnNextSyncRef.current = false;
       toast.error("Failed to sync user data");
       privyLogout();
     } finally {
@@ -103,10 +112,12 @@ export function PrivyAuthProvider({ children }: { children: ReactNode }) {
   }, [authenticated]);
 
   const handleLogin = () => {
+    shouldToastOnNextSyncRef.current = true;
     privyLogin();
   };
 
   const handleLogout = () => {
+    shouldToastOnNextSyncRef.current = false;
     localStorage.removeItem("auth-token");
     setToken(null);
     setUser(null);
@@ -125,4 +136,3 @@ export function PrivyAuthProvider({ children }: { children: ReactNode }) {
 
   return <PrivyAuthContext.Provider value={value}>{children}</PrivyAuthContext.Provider>
 }
-

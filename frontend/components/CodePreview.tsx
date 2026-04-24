@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
     SandpackProvider,
     SandpackLayout,
@@ -277,199 +278,264 @@ function UIPreview({
     framework: "html" | "react";
 }) {
     const [isFullscreen, setIsFullscreen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
 
-    const sandpackContent = (heightVal: string) => {
-        if (framework === "react") {
-            return (
-                <SandpackProvider
-                    template="react"
-                    files={{
-                        "/App.js": {
-                            code,
-                            active: true,
-                        },
-                    }}
-                    theme="dark"
-                    options={{
-                        externalResources: [
-                            "https://cdn.tailwindcss.com",
-                        ],
-                    }}
-                >
-                    <SandpackLayout
-                        style={{
-                            borderRadius: isFullscreen ? "0px" : "12px",
-                            border: isFullscreen ? "none" : "1px solid #30363d",
-                            height: isFullscreen ? "100%" : undefined,
-                        }}
-                    >
-                        {!isFullscreen && (
-                            <SandpackCodeEditor
-                                showLineNumbers
-                                showTabs
-                                style={{ height: heightVal }}
-                            />
-                        )}
-                        <SandpackPreview
-                            showOpenInCodeSandbox={false}
-                            showRefreshButton
-                            style={{ height: heightVal, flex: isFullscreen ? 1 : undefined }}
-                        />
-                    </SandpackLayout>
-                </SandpackProvider>
-            );
-        }
+    // Close fullscreen on Escape key
+    useEffect(() => {
+        if (!isFullscreen) return;
+        const handleKey = (e: KeyboardEvent) => {
+            if (e.key === "Escape") setIsFullscreen(false);
+        };
+        window.addEventListener("keydown", handleKey);
+        return () => window.removeEventListener("keydown", handleKey);
+    }, [isFullscreen]);
 
-        return (
-            <SandpackProvider
-                template="static"
-                files={{
-                    "/index.html": {
-                        code,
-                        active: true,
-                    },
-                }}
-                theme="dark"
-            >
-                <SandpackLayout
-                    style={{
-                        borderRadius: isFullscreen ? "0px" : "12px",
-                        border: isFullscreen ? "none" : "1px solid #30363d",
-                        height: isFullscreen ? "100%" : undefined,
-                    }}
-                >
-                    {!isFullscreen && (
-                        <SandpackCodeEditor
-                            showLineNumbers
-                            showTabs
-                            style={{ height: heightVal }}
-                        />
-                    )}
-                    <SandpackPreview
-                        showOpenInCodeSandbox={false}
-                        showRefreshButton
-                        style={{ height: heightVal, flex: isFullscreen ? 1 : undefined }}
-                    />
-                </SandpackLayout>
-            </SandpackProvider>
-        );
-    };
+    const sandpackFiles: any =
+        framework === "react"
+            ? { "/App.js": { code, active: true } }
+            : { "/index.html": { code, active: true } };
 
-    /* ── Fullscreen Overlay ── */
-    if (isFullscreen) {
-        return (
+    const sandpackTemplate = framework === "react" ? "react" : "static";
+    const sandpackOptions =
+        framework === "react"
+            ? { externalResources: ["https://cdn.tailwindcss.com"] }
+            : undefined;
+
+    // Measure the chat content area position for fullscreen placement
+    const [contentRect, setContentRect] = useState({ top: 0, left: 0, width: 0, height: 0 });
+
+    useEffect(() => {
+        if (!isFullscreen) return;
+
+        const measure = () => {
+            // Find the chat content container (the white/dark rounded box)
+            const chatContainer = document.querySelector('.flex-1.relative.z-10.h-screen');
+            if (chatContainer) {
+                const rect = chatContainer.getBoundingClientRect();
+                setContentRect({
+                    top: rect.top,
+                    left: rect.left,
+                    width: rect.width,
+                    height: rect.height,
+                });
+            } else {
+                // Fallback to full viewport
+                setContentRect({ top: 0, left: 0, width: window.innerWidth, height: window.innerHeight });
+            }
+        };
+
+        measure();
+        window.addEventListener("resize", measure);
+        return () => window.removeEventListener("resize", measure);
+    }, [isFullscreen]);
+
+    /* ── Fullscreen overlay rendered via Portal ── */
+    const fullscreenOverlay = isFullscreen
+        ? createPortal(
             <div
                 style={{
                     position: "fixed",
-                    inset: 0,
-                    zIndex: 9999,
-                    background: "#0d1117",
+                    top: contentRect.top,
+                    left: contentRect.left,
+                    width: contentRect.width,
+                    height: contentRect.height,
+                    zIndex: 99999,
                     display: "flex",
                     flexDirection: "column",
+                    padding: "8px",
+                    boxSizing: "border-box",
                 }}
             >
-                {/* Toolbar */}
+                {/* CSS to force Sandpack internal elements to fill space */}
+                <style>{`
+                    .sp-fullscreen-inner .sp-wrapper {
+                        height: 100% !important;
+                    }
+                    .sp-fullscreen-inner .sp-layout {
+                        height: 100% !important;
+                        border: none !important;
+                        border-radius: 0 !important;
+                    }
+                    .sp-fullscreen-inner .sp-stack {
+                        height: 100% !important;
+                        flex: 1 !important;
+                    }
+                    .sp-fullscreen-inner .sp-preview-container {
+                        height: 100% !important;
+                        flex: 1 !important;
+                    }
+                    .sp-fullscreen-inner .sp-preview-iframe {
+                        height: 100% !important;
+                        max-height: none !important;
+                        border: none !important;
+                    }
+                `}</style>
+
                 <div
+                    className="sp-fullscreen-inner"
                     style={{
+                        flex: 1,
                         display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "10px 20px",
-                        background: "#161b22",
-                        borderBottom: "1px solid #30363d",
+                        flexDirection: "column",
+                        overflow: "hidden",
+                        background: "#0d1117",
+                        borderRadius: "12px",
+                        border: "1px solid #30363d",
                     }}
                 >
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        <svg width="16" height="16" viewBox="0 0 16 16" fill="#8b949e">
-                            <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0113.25 15H2.75A1.75 1.75 0 011 13.25V2.75z" />
-                        </svg>
-                        <span style={{ color: "#c9d1d9", fontSize: "14px", fontWeight: 600 }}>
-                            Live Preview
-                        </span>
-                        <span
-                            style={{
-                                fontSize: "10px",
-                                padding: "2px 8px",
-                                borderRadius: "6px",
-                                background: framework === "react" ? "#61dafb" : "#e34c26",
-                                color: "#000",
-                                fontWeight: 600,
-                            }}
-                        >
-                            {framework === "react" ? "React" : "HTML"}
-                        </span>
-                    </div>
-                    <button
-                        onClick={() => setIsFullscreen(false)}
+                    {/* Toolbar */}
+                    <div
                         style={{
                             display: "flex",
                             alignItems: "center",
-                            gap: "6px",
-                            padding: "6px 14px",
-                            borderRadius: "8px",
-                            border: "1px solid #30363d",
-                            background: "#21262d",
-                            color: "#c9d1d9",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            transition: "all 0.2s",
+                            justifyContent: "space-between",
+                            padding: "10px 20px",
+                            background: "#161b22",
+                            borderBottom: "1px solid #30363d",
+                            flexShrink: 0,
                         }}
                     >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
-                        </svg>
-                        Exit Fullscreen
-                    </button>
-                </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="#8b949e">
+                                <path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0113.25 15H2.75A1.75 1.75 0 011 13.25V2.75z" />
+                            </svg>
+                            <span style={{ color: "#c9d1d9", fontSize: "14px", fontWeight: 600 }}>
+                                Live Preview
+                            </span>
+                            <span
+                                style={{
+                                    fontSize: "10px",
+                                    padding: "2px 8px",
+                                    borderRadius: "6px",
+                                    background: framework === "react" ? "#61dafb" : "#e34c26",
+                                    color: "#000",
+                                    fontWeight: 600,
+                                }}
+                            >
+                                {framework === "react" ? "React" : "HTML"}
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => setIsFullscreen(false)}
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                padding: "6px 14px",
+                                borderRadius: "8px",
+                                border: "1px solid #30363d",
+                                background: "#21262d",
+                                color: "#c9d1d9",
+                                fontSize: "12px",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                transition: "all 0.2s",
+                            }}
+                        >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+                            </svg>
+                            Exit
+                        </button>
+                    </div>
 
-                {/* Preview content */}
-                <div style={{ flex: 1, overflow: "hidden" }}>
-                    {sandpackContent("100%")}
+                    {/* Sandpack fills remaining space */}
+                    <div style={{ flex: 1, overflow: "hidden", minHeight: 0 }}>
+                        <SandpackProvider
+                            template={sandpackTemplate}
+                            files={sandpackFiles}
+                            theme="dark"
+                            options={sandpackOptions}
+                        >
+                            <SandpackLayout
+                                style={{
+                                    borderRadius: 0,
+                                    border: "none",
+                                    height: "100%",
+                                }}
+                            >
+                                <SandpackPreview
+                                    showOpenInCodeSandbox={false}
+                                    showRefreshButton
+                                    style={{ height: "100%", flex: 1 }}
+                                />
+                            </SandpackLayout>
+                        </SandpackProvider>
+                    </div>
                 </div>
-            </div>
-        );
-    }
+            </div>,
+            document.body
+        )
+        : null;
 
     /* ── Inline Preview ── */
     return (
-        <div style={{ borderRadius: "12px", overflow: "hidden", position: "relative" }}>
-            {/* Fullscreen button */}
-            <div
-                style={{
-                    position: "absolute",
-                    top: "8px",
-                    right: "8px",
-                    zIndex: 10,
-                }}
-            >
-                <button
-                    onClick={() => setIsFullscreen(true)}
-                    title="Open fullscreen preview"
+        <>
+            <div ref={containerRef} style={{ borderRadius: "12px", overflow: "hidden", position: "relative" }}>
+                {/* Fullscreen button */}
+                <div
                     style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "4px",
-                        padding: "5px 10px",
-                        borderRadius: "6px",
-                        border: "1px solid #30363d",
-                        background: "rgba(22, 27, 34, 0.9)",
-                        color: "#c9d1d9",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        backdropFilter: "blur(8px)",
-                        transition: "all 0.2s",
+                        position: "absolute",
+                        top: "8px",
+                        right: "8px",
+                        zIndex: 10,
                     }}
                 >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                    </svg>
-                    Fullscreen
-                </button>
+                    <button
+                        onClick={() => setIsFullscreen(true)}
+                        title="Open fullscreen preview"
+                        style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            padding: "5px 10px",
+                            borderRadius: "6px",
+                            border: "1px solid #30363d",
+                            background: "rgba(22, 27, 34, 0.9)",
+                            color: "#c9d1d9",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            backdropFilter: "blur(8px)",
+                            transition: "all 0.2s",
+                        }}
+                    >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                        </svg>
+                        Fullscreen
+                    </button>
+                </div>
+
+                {/* Inline Sandpack */}
+                <SandpackProvider
+                    template={sandpackTemplate}
+                    files={sandpackFiles}
+                    theme="dark"
+                    options={sandpackOptions}
+                >
+                    <SandpackLayout
+                        style={{
+                            borderRadius: "12px",
+                            border: "1px solid #30363d",
+                        }}
+                    >
+                        <SandpackCodeEditor
+                            showLineNumbers
+                            showTabs
+                            style={{ height: "400px" }}
+                        />
+                        <SandpackPreview
+                            showOpenInCodeSandbox={false}
+                            showRefreshButton
+                            style={{ height: "400px" }}
+                        />
+                    </SandpackLayout>
+                </SandpackProvider>
             </div>
 
-            {sandpackContent("400px")}
-        </div>
+            {/* Portal-rendered fullscreen overlay */}
+            {fullscreenOverlay}
+        </>
     );
 }

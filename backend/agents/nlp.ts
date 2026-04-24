@@ -236,18 +236,56 @@ export const SEARCH_CLUSTER: IntentCluster = {
   weight: 1.0,
 };
 
+export const CODE_CLUSTER: IntentCluster = {
+  keywords: [
+    // Programming languages
+    "code", "program", "script", "algorithm", "function",
+    "python", "javascript", "typescript", "java", "rust", "golang", "ruby",
+    "html", "css", "react", "vue", "angular", "svelte", "nextjs",
+    // Actions
+    "debug", "refactor", "compile", "execute", "run",
+    // Concepts
+    "fibonacci", "sorting", "binary", "recursion", "loop", "array", "hashmap",
+    "api", "endpoint", "database", "query", "sql",
+    // UI generation
+    "webpage", "website", "landing", "dashboard", "component", "layout",
+    "form", "card", "modal", "navbar", "sidebar", "footer", "header",
+    "button", "table", "chart", "graph",
+    // Sandbox / execution
+    "sandbox", "output", "console", "terminal", "snippet",
+  ],
+  phrases: [
+    "write a script", "write code", "write a function", "write a program",
+    "create a landing page", "create a webpage", "create a website",
+    "create a dashboard", "create a form", "create a component",
+    "build a", "build me", "make a calculator", "make a website",
+    "generate a ui", "generate ui", "generate a page",
+    "run this code", "execute this", "run the code",
+    "debug this", "fix this code", "refactor this",
+    "fibonacci sequence", "sorting algorithm", "binary search",
+    "hello world", "print hello",
+  ],
+  patterns: [
+    /\b(write|create|build|generate|make) .*(code|script|function|program|page|website|webpage|dashboard|component|form|ui|landing|app|application)\b/i,
+    /\b(run|execute|compile|test) .*(code|script|program|function)\b/i,
+    /\b(debug|fix|refactor|optimize) .*(code|script|function|program|bug)\b/i,
+    /\b(fibonacci|sorting|binary search|quicksort|mergesort|bubblesort|recursion)\b/i,
+    /\b(python|javascript|typescript|java|rust|golang|ruby|html|css|react|vue|angular|svelte)\b/i,
+    /\b(landing page|web ?page|web ?site|dashboard|ui component)\b/i,
+    /```[\s\S]*```/i, // Code fences in the message
+  ],
+  weight: 1.1, // slightly higher — code intent should win over general
+};
+
 export const GENERAL_CLUSTER: IntentCluster = {
   keywords: [
     // Creative
-    "write", "create", "generate", "draft", "compose", "essay", "poem", "story",
-    // Coding
-    "code", "program", "function", "debug", "refactor", "script", "algorithm",
-    "typescript", "javascript", "python", "java", "react", "html", "css",
+    "essay", "poem", "story", "novel", "lyrics", "letter",
     // Education
     "explain", "teach", "learn", "understand", "definition", "meaning", "concept",
     // Language
     "translate", "summarize", "paraphrase", "rewrite", "proofread",
-    // Math
+    // Math (non-code)
     "calculate", "compute", "solve", "math", "equation", "formula", "integral",
     // Analysis
     "review", "analyze", "compare", "evaluate", "critique",
@@ -256,23 +294,22 @@ export const GENERAL_CLUSTER: IntentCluster = {
   ],
   phrases: [
     "help me understand", "how does it work", "what does it mean",
-    "write a", "create a", "generate a", "make a", "draft a",
-    "can you explain", "can you help", "can you write",
+    "can you explain", "can you help",
     "tell me about", "teach me",
-    "fix this", "debug this", "refactor this",
     "translate this", "summarize this",
     "who are you", "what are you", "what can you do",
+    "write an essay", "write a poem", "write a story", "write a letter",
+    "draft an email", "compose a message",
   ],
   patterns: [
-    /\b(write|create|generate|make|draft|compose)\b/i,
     /\b(explain|teach|help me understand)\b/i,
-    /\b(code|program|function|debug|fix|refactor|script)\b/i,
     /\b(translate|summarize|paraphrase|rewrite|proofread)\b/i,
     /\b(calculate|compute|solve|math|equation|formula)\b/i,
     /\b(review|analyze|compare|evaluate|critique)\b/i,
     /^(hi|hello|hey|thanks|thank you|who are you|what (are|can) you)/i,
+    /\b(write|draft|compose) .*(essay|poem|story|letter|email|message|article|blog)\b/i,
   ],
-  weight: 0.9, // slightly lower — acts as fallback
+  weight: 0.8, // lowest — acts as true fallback
 };
 
 // ─── Emotion & sentiment detection ──────────────────────────────────────────
@@ -428,11 +465,116 @@ export function contextBoost(
   conversationContext?: Array<{ role: string; content: string; agent?: string }>,
 ): number {
   if (!conversationContext || conversationContext.length === 0) return 0;
-  // Check last few messages for agent signals
-  const recentAssistant = conversationContext
-    .filter((m) => m.role === "assistant")
-    .slice(-2);
-  // Very small boost — shouldn't override strong signals
-  // We don't have agent info in message history currently, so this is future-proof
   return 0;
 }
+
+// ─── Local classifier (instant, <1ms) ────────────────────────────────────────
+
+export type AgentTypeLocal = "weather" | "web_search" | "code_assistant" | "general";
+
+export interface LocalClassification {
+  agent: AgentTypeLocal;
+  confidence: number;
+  reason: string;
+  scores: Record<string, number>;
+  /** Extracted city for weather queries */
+  extractedCity?: string;
+}
+
+// Regex to extract city/location from weather queries
+const CITY_EXTRACTION_PATTERNS = [
+  // "how's the weather in Delhi", "what's the temperature in London", "what's the weather like in New York"
+  /(?:how'?s?|what'?s?|hows|whats)\s+(?:the\s+)?(?:weather|temperature|forecast)\s+(?:\w+\s+)?(?:in|at|for|of)\s+([A-Za-z][A-Za-z\s\-']{1,40})/i,
+  // "how cold is it in Berlin", "how hot in Chennai"
+  /(?:how)\s+(?:hot|cold|warm|humid|windy|chilly)\s+(?:is\s+it\s+)?(?:in|at)\s+([A-Za-z][A-Za-z\s\-']{1,40})/i,
+  // "is it raining in Paris", "will it snow in Tokyo"
+  /(?:is it|will it|does it|going to)\s+(?:rain\w*|snow\w*|storm\w*|sun\w*)\s+(?:in|at)\s+([A-Za-z][A-Za-z\s\-']{1,40})/i,
+  // "do I need an umbrella in Seattle"
+  /(?:do i need|should i (?:carry|bring|take))\s+.*?\s+(?:in|at|for)\s+([A-Za-z][A-Za-z\s\-']{1,40})/i,
+  // "weather in Mumbai", "temperature in New York" — generic "[keyword] in [city]"
+  /(?:weather|forecast|temperature|rain|snow|humidity|wind|sunrise|sunset|climate)\s+(?:\w+\s+)?(?:in|at|for|of|near)\s+([A-Za-z][A-Za-z\s\-']{1,40})/i,
+  // "Mumbai weather", "New York temperature" — "[city] [keyword]"
+  /^([A-Za-z][A-Za-z\s\-']{1,40})\s+(?:weather|forecast|temperature|climate)/i,
+];
+
+function extractCity(message: string): string | undefined {
+  for (const pattern of CITY_EXTRACTION_PATTERNS) {
+    const match = message.match(pattern);
+    if (match?.[1]) {
+      // Clean up: trim, remove trailing common words that aren't part of city
+      const city = match[1]
+        .trim()
+        .replace(/\b(today|tomorrow|now|right now|this week|please|thanks)\b.*$/i, "")
+        .trim();
+      if (city.length >= 2) return city;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Classify a message locally using the NLP intent scoring engine.
+ * Returns the best-matching agent with a normalised confidence (0-1).
+ * Runs in <1ms — no network calls.
+ */
+export function classifyLocally(
+  message: string,
+  _conversationContext?: Array<{ role: string; content: string }>,
+): LocalClassification {
+  const tokens = tokenize(message);
+  const messageBigrams = bigrams(tokens);
+  const messageTrigrams = trigrams(tokens);
+
+  const clusters: Array<{ agent: AgentTypeLocal; cluster: IntentCluster }> = [
+    { agent: "weather", cluster: WEATHER_CLUSTER },
+    { agent: "web_search", cluster: SEARCH_CLUSTER },
+    { agent: "code_assistant", cluster: CODE_CLUSTER },
+    { agent: "general", cluster: GENERAL_CLUSTER },
+  ];
+
+  const results: Array<{ agent: AgentTypeLocal; score: number; signals: string[] }> = [];
+
+  for (const { agent, cluster } of clusters) {
+    const result = scoreIntent(tokens, messageBigrams, messageTrigrams, message, cluster);
+    results.push({ agent, score: result.score, signals: result.signals });
+  }
+
+  // Sort by score descending
+  results.sort((a, b) => b.score - a.score);
+
+  const best = results[0];
+  const second = results[1];
+  const scores: Record<string, number> = {};
+  for (const r of results) scores[r.agent] = Math.round(r.score * 100) / 100;
+
+  // If best score is 0, default to general
+  if (best.score === 0) {
+    return {
+      agent: "general",
+      confidence: 0.3,
+      reason: "No intent signals matched — defaulting to general",
+      scores,
+    };
+  }
+
+  // Normalise confidence: based on absolute score and gap to second place
+  const gap = best.score - second.score;
+  const absConfidence = Math.min(best.score / 6, 1); // 6+ score = 1.0
+  const gapConfidence = Math.min(gap / 3, 1);         // 3+ gap = 1.0
+  const confidence = Math.round((absConfidence * 0.6 + gapConfidence * 0.4) * 100) / 100;
+
+  // Extract city for weather
+  let extractedCity: string | undefined;
+  if (best.agent === "weather") {
+    extractedCity = extractCity(message);
+  }
+
+  return {
+    agent: best.agent,
+    confidence,
+    reason: `Local NLP: ${best.signals.slice(0, 3).join(", ")}`,
+    scores,
+    extractedCity,
+  };
+}
+

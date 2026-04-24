@@ -21,8 +21,8 @@
     // Some stricter flags (disabled by default)
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false
+    "noPropertyAccessFromIndexSignature": false,
   },
-  "include": ["**/*.ts"],
-  "exclude": ["node_modules", "dist", "prisma.config.ts"]
+  "include": ["**/*.ts", "**/*.js"],
+  "exclude": ["node_modules", "dist", "prisma.config.ts"],
 }

@@ -9,8 +9,10 @@ import {
   webSearchAgent,
   weatherAgent,
   codeAssistantAgent,
+  handleFinancialQuery,
   getAvailableAgents,
 } from "../agents";
+import { generateDocument } from "../agents/documentAgent.js";
 
 const router = Router();
 
@@ -134,13 +136,15 @@ router.post("/send", authMiddleware, async (req: Request, res: Response) => {
       },
     ];
 
-    // Route to the appropriate agent using LLM
+    // Route to the appropriate agent using hybrid router (local NLP first, LLM fallback)
     const routingResult = await routeToAgent(message, messageHistory);
     sendEvent("agent_selected", {
       agent: routingResult.agent,
       agentName: routingResult.agentName,
       confidence: routingResult.confidence,
       reason: routingResult.reason,
+      routingMethod: routingResult.routingMethod,
+      routingTimeMs: routingResult.routingTimeMs,
     });
 
     // Generate AI response with streaming
@@ -272,6 +276,64 @@ router.post("/send", authMiddleware, async (req: Request, res: Response) => {
         aiResponse = toolResultSummaries.join("\n\n");
       } else if (toolResultSummaries.length > 0) {
         aiResponse = toolResultSummaries.join("\n\n") + "\n\n" + aiResponse;
+      }
+    } else if (routingResult.agent === "financial") {
+      // Dedicated financial agent — forward live chunks while preserving structured metadata
+      try {
+        const financialResult = await handleFinancialQuery(
+          message,
+          messageHistory.slice(0, -1),
+          [],
+          {
+            onChunk: async (chunk: string) => {
+              aiResponse += chunk;
+              sendEvent("ai_chunk", { chunk });
+            },
+          },
+        );
+
+        if (!aiResponse.trim()) {
+          aiResponse =
+            financialResult?.text ||
+            "I could not prepare a financial response right now.";
+          sendEvent("ai_chunk", { chunk: aiResponse });
+        }
+
+        messageMetadata = {
+          financialData: {
+            stockData: financialResult?.stockData ?? null,
+            verdict: financialResult?.verdict ?? null,
+            news: financialResult?.news ?? [],
+            action: financialResult?.action ?? null,
+          },
+        };
+
+        sendEvent("financial_data", messageMetadata.financialData);
+      } catch (err: any) {
+        aiResponse =
+          err?.message ||
+          "I couldn't process that financial query right now. Try again with an NSE ticker like TCS or INFY.";
+        sendEvent("ai_chunk", { chunk: aiResponse });
+      }
+    } else if (routingResult.agent === "document_generate") {
+      // Dedicated document agent — generate structured document response
+      try {
+        const documentResult = await generateDocument(message);
+
+        aiResponse =
+          documentResult?.content ||
+          "I could not generate the document right now.";
+        messageMetadata = {
+          documentData: documentResult,
+        };
+
+        sendEvent("document_data", documentResult);
+        sendEvent("ai_chunk", { chunk: aiResponse });
+      } catch (err: any) {
+        aiResponse =
+          err?.message ||
+          "I couldn't generate that document right now. Please try again.";
+        sendEvent("ai_chunk", { chunk: aiResponse });
       }
     } else {
       // Use the general assistant

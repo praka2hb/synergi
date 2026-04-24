@@ -1,9 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Suppress non-critical lint/type errors during Vercel builds
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  // Suppress non-critical type errors during Vercel builds
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -35,4 +32,3 @@ const nextConfig = {
 };
 
 export default nextConfig;
-

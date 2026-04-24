@@ -1,209 +1,265 @@
-"use client"
+"use client";
 
-import type React from "react"
-import { useState, useRef, useEffect, useCallback } from "react"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Send, Bot, SunMoon, Menu, Loader2, Globe, CloudSun, Code } from "lucide-react"
-import { useTheme } from "next-themes"
-import SynergiLogo from "@/components/synergi-logo"
-import { usePrivyAuth } from "@/hooks/use-privy-auth"
-import config from "@/lib/config"
-import { MarkdownMessage } from "@/components/markdown-message"
-import { AdvancedStreamingText } from "@/components/advanced-streaming-text"
-import CommonSidebar from "@/components/common-sidebar"
-import AgentsView from "@/components/agents-view"
-import { useSidebar } from "@/context/sidebar-context"
-import { useRouter } from "next/navigation"
-import { WeatherCard, type WeatherData } from "@/components/weather-card"
-import CodePreview from "@/components/CodePreview"
+import type React from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Send,
+  Bot,
+  SunMoon,
+  Menu,
+  Loader2,
+  Globe,
+  CloudSun,
+  Code,
+  LineChart,
+  FileText,
+} from "lucide-react";
+import { useTheme } from "next-themes";
+import SynergiLogo from "@/components/synergi-logo";
+import { usePrivyAuth } from "@/hooks/use-privy-auth";
+import config from "@/lib/config";
+import { MarkdownMessage } from "@/components/markdown-message";
+import { AdvancedStreamingText } from "@/components/advanced-streaming-text";
+import CommonSidebar from "@/components/common-sidebar";
+import AgentsView from "@/components/agents-view";
+import { useSidebar } from "@/context/sidebar-context";
+import { useRouter } from "next/navigation";
+import { WeatherCard, type WeatherData } from "@/components/weather-card";
+import CodePreview from "@/components/CodePreview";
+import StockCard from "@/components/StockCard";
+import DocumentCard from "@/components/DocumentCard";
+import { addToWatchlist, getWatchlist, isInWatchlist } from "@/store/watchlist";
 
 interface CodeData {
-  type: "output" | "ui"
-  code: string
-  framework?: "html" | "react"
-  sourceCode?: string
-  language?: "python" | "javascript"
+  type: "output" | "ui";
+  code: string;
+  framework?: "html" | "react";
+  sourceCode?: string;
+  language?: "python" | "javascript";
+}
+
+interface FinancialNewsItem {
+  title: string;
+  date?: string;
+  source?: string;
+  url?: string;
+  headline?: string;
+  publishedAt?: string;
+}
+
+interface FinancialData {
+  stockData?: any;
+  verdict?: string | null;
+  news?: FinancialNewsItem[];
+  action?: "ADD_WATCHLIST" | "REMOVE_WATCHLIST" | null;
+}
+
+interface DocumentData {
+  type: "document";
+  title: string;
+  content: string;
 }
 
 interface Message {
-  id: string
-  content: string
-  sender: "user" | "assistant"
-  timestamp: Date
-  isStreaming?: boolean
-  agent?: string
-  agentName?: string
-  weatherData?: WeatherData
-  codeData?: CodeData
+  id: string;
+  content: string;
+  sender: "user" | "assistant";
+  timestamp: Date;
+  isStreaming?: boolean;
+  agent?: string;
+  agentName?: string;
+  weatherData?: WeatherData;
+  codeData?: CodeData;
+  financialData?: FinancialData;
+  documentData?: DocumentData;
 }
 
 interface Conversation {
-  id: string
-  title: string
-  createdAt: string
-  updatedAt: string
-  messageCount: number
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
   lastMessage?: {
-    content: string
-    createdAt: string
-  }
+    content: string;
+    createdAt: string;
+  };
 }
 
 interface EventStreamData {
-  event: string
-  data: any
+  event: string;
+  data: any;
 }
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
-  const [inputValue, setInputValue] = useState("")
-  const [isStreaming, setIsStreaming] = useState(false)
-  const [streamingContent, setStreamingContent] = useState("")
-  const [currentAgent, setCurrentAgent] = useState<string | null>(null)
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentConversationId, setCurrentConversationId] = useState<
+    string | null
+  >(null);
+  const [inputValue, setInputValue] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingContent, setStreamingContent] = useState("");
+  const [currentAgent, setCurrentAgent] = useState<string | null>(null);
 
-  const [isLoadingConversations, setIsLoadingConversations] = useState(false)
-  const [isLoadingMessages, setIsLoadingMessages] = useState(false)
-  const [currentView, setCurrentView] = useState<'chat' | 'agents'>('chat')
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [currentView, setCurrentView] = useState<"chat" | "agents">("chat");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Use next-themes for theme management
-  const { theme, setTheme, resolvedTheme } = useTheme()
-  const [mounted, setMounted] = useState(false)
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
 
   // Auth state - using Privy
-  const { user, isAuthenticated, token } = usePrivyAuth()
+  const { user, isAuthenticated, token } = usePrivyAuth();
 
   // Sidebar state from context
-  const { isSidebarOpen, isMobileSidebarOpen, setIsMobileSidebarOpen } = useSidebar()
+  const { isSidebarOpen, isMobileSidebarOpen, setIsMobileSidebarOpen } =
+    useSidebar();
 
-  const router = useRouter()
+  const router = useRouter();
 
   // Ensure component is mounted
   useEffect(() => {
-    setMounted(true)
-  }, [])
+    setMounted(true);
+  }, []);
 
   // Load conversations when authenticated, clear when not authenticated
   useEffect(() => {
     if (isAuthenticated && token) {
-      loadConversations()
+      loadConversations();
     } else {
       // Clear conversations when user logs out
-      setConversations([])
-      setCurrentConversationId(null)
-      setMessages([])
-      setStreamingContent("")
+      setConversations([]);
+      setCurrentConversationId(null);
+      setMessages([]);
+      setStreamingContent("");
       // Reset to chat view if currently in agents view
-      setCurrentView('chat')
+      setCurrentView("chat");
     }
-  }, [isAuthenticated, token])
+  }, [isAuthenticated, token]);
 
   const toggleTheme = () => {
     if (resolvedTheme === "dark") {
-      setTheme("light")
+      setTheme("light");
     } else {
-      setTheme("dark")
+      setTheme("dark");
     }
-  }
+  };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, streamingContent])
+    scrollToBottom();
+  }, [messages, streamingContent]);
 
   const loadConversations = async () => {
-    if (!token) return
+    if (!token) return;
 
-    setIsLoadingConversations(true)
+    setIsLoadingConversations(true);
     try {
-      const response = await fetch(config.getApiUrl(config.endpoints.chat.conversations), {
-        headers: {
-          'Authorization': `Bearer ${token}`,
+      const response = await fetch(
+        config.getApiUrl(config.endpoints.chat.conversations),
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         },
-      })
+      );
 
       if (response.ok) {
-        const data = await response.json()
-        setConversations(data.conversations || [])
+        const data = await response.json();
+        setConversations(data.conversations || []);
       }
     } catch (error) {
-      console.error('Failed to load conversations:', error)
+      console.error("Failed to load conversations:", error);
     } finally {
-      setIsLoadingConversations(false)
+      setIsLoadingConversations(false);
     }
-  }
+  };
 
   const loadConversationMessages = async (conversationId: string) => {
-    if (!token) return
+    if (!token) return;
 
-    setIsLoadingMessages(true)
+    setIsLoadingMessages(true);
     try {
-      const response = await fetch(config.getApiUrl(config.endpoints.chat.messages(conversationId)), {
-        headers: {
-          'Authorization': `Bearer ${token}`,
+      const response = await fetch(
+        config.getApiUrl(config.endpoints.chat.messages(conversationId)),
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         },
-      })
+      );
 
       if (response.ok) {
-        const data = await response.json()
-        setMessages(data.messages.map((msg: any) => ({
-          id: msg.id,
-          content: msg.content,
-          sender: msg.role.toLowerCase(),
-          timestamp: new Date(msg.createdAt),
-          weatherData: msg.metadata?.weatherData,
-          codeData: msg.metadata?.codeData,
-        })))
-        setCurrentConversationId(conversationId)
+        const data = await response.json();
+        setMessages(
+          data.messages.map((msg: any) => ({
+            id: msg.id,
+            content: msg.content,
+            sender: msg.role.toLowerCase(),
+            timestamp: new Date(msg.createdAt),
+            weatherData: msg.metadata?.weatherData,
+            codeData: msg.metadata?.codeData,
+            financialData: msg.metadata?.financialData,
+            documentData: msg.metadata?.documentData,
+          })),
+        );
+        setCurrentConversationId(conversationId);
       }
     } catch (error) {
-      console.error('Failed to load messages:', error)
+      console.error("Failed to load messages:", error);
     } finally {
-      setIsLoadingMessages(false)
+      setIsLoadingMessages(false);
     }
-  }
+  };
 
   const deleteConversation = async (conversationId: string) => {
-    if (!token) return
+    if (!token) return;
 
     try {
-      const response = await fetch(config.getApiUrl(`/api/chat/conversations/${conversationId}`), {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
+      const response = await fetch(
+        config.getApiUrl(`/api/chat/conversations/${conversationId}`),
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         },
-      })
+      );
 
       if (response.ok) {
         // Remove from conversations list
-        setConversations(prev => prev.filter(conv => conv.id !== conversationId))
+        setConversations((prev) =>
+          prev.filter((conv) => conv.id !== conversationId),
+        );
 
         // If this was the current conversation, clear messages and reset
         if (currentConversationId === conversationId) {
-          setMessages([])
-          setCurrentConversationId(null)
+          setMessages([]);
+          setCurrentConversationId(null);
         }
       } else {
-        console.error('Failed to delete conversation')
+        console.error("Failed to delete conversation");
       }
     } catch (error) {
-      console.error('Failed to delete conversation:', error)
+      console.error("Failed to delete conversation:", error);
     }
-  }
+  };
 
   const handleSendMessage = useCallback(async () => {
-    if (!inputValue.trim() || isStreaming) return
+    if (!inputValue.trim() || isStreaming) return;
 
     // If user is not authenticated, do nothing (they should use the login button in header)
     if (!isAuthenticated || !token) {
-      return
+      return;
     }
 
     const userMessage: Message = {
@@ -211,253 +267,282 @@ export default function ChatPage() {
       content: inputValue,
       sender: "user",
       timestamp: new Date(),
-    }
+    };
 
-    setMessages((prev) => [...prev, userMessage])
-    setInputValue("")
-    setIsStreaming(true)
-    setStreamingContent("")
+    setMessages((prev) => [...prev, userMessage]);
+    setInputValue("");
+    setIsStreaming(true);
+    setStreamingContent("");
 
     try {
-      const response = await fetch(config.getApiUrl(config.endpoints.chat.send), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
+      const response = await fetch(
+        config.getApiUrl(config.endpoints.chat.send),
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            message: inputValue,
+            conversationId: currentConversationId,
+          }),
         },
-        body: JSON.stringify({
-          message: inputValue,
-          conversationId: currentConversationId,
-        }),
-      })
+      );
 
       if (!response.ok) {
-        throw new Error('Failed to send message')
+        throw new Error("Failed to send message");
       }
 
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-      let streamingMessageId = (Date.now() + 1).toString()
-      let fullContent = ""
-      let currentEvent = ""
-      let selectedAgent: string | undefined = undefined
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let streamingMessageId = (Date.now() + 1).toString();
+      let fullContent = "";
+      let currentEvent = "";
+      let selectedAgent: string | undefined = undefined;
 
       if (reader) {
         while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
+          const { done, value } = await reader.read();
+          if (done) break;
 
-          const chunk = decoder.decode(value)
-          const lines = chunk.split('\n')
+          const chunk = decoder.decode(value);
+          const lines = chunk.split("\n");
 
           for (const line of lines) {
-            if (line.startsWith('event:')) {
-              currentEvent = line.substring(6).trim()
-              continue
+            if (line.startsWith("event:")) {
+              currentEvent = line.substring(6).trim();
+              continue;
             }
 
-            if (line.startsWith('data:')) {
+            if (line.startsWith("data:")) {
               try {
-                const dataStr = line.substring(5).trim()
-                if (!dataStr) continue
+                const dataStr = line.substring(5).trim();
+                if (!dataStr) continue;
 
-                const data = JSON.parse(dataStr)
+                const data = JSON.parse(dataStr);
 
                 switch (currentEvent) {
-                  case 'conversation':
+                  case "conversation":
                     if (data.conversationId && !currentConversationId) {
-                      setCurrentConversationId(data.conversationId)
+                      setCurrentConversationId(data.conversationId);
                     }
-                    break
+                    break;
 
-                  case 'agent_selected':
-                    selectedAgent = data.agent
-                    setCurrentAgent(data.agent)
+                  case "agent_selected":
+                    selectedAgent = data.agent;
+                    setCurrentAgent(data.agent);
                     // Store agent name for display
-                    var selectedAgentName = data.agentName || data.agent
-                    break
+                    var selectedAgentName = data.agentName || data.agent;
+                    break;
 
-                  case 'weather_data':
+                  case "weather_data":
                     // Attach structured weather data to the streaming message
-                    setMessages(prev =>
-                      prev.map(msg =>
+                    setMessages((prev) =>
+                      prev.map((msg) =>
                         msg.id === streamingMessageId
                           ? { ...msg, weatherData: data }
-                          : msg
-                      )
-                    )
-                    break
+                          : msg,
+                      ),
+                    );
+                    break;
 
-                  case 'tool_call':
+                  case "financial_data":
+                    // Attach structured financial data to the streaming message
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === streamingMessageId
+                          ? { ...msg, financialData: data }
+                          : msg,
+                      ),
+                    );
+                    break;
+
+                  case "document_data":
+                    // Attach structured document data to the streaming message
+                    setMessages((prev) =>
+                      prev.map((msg) =>
+                        msg.id === streamingMessageId
+                          ? { ...msg, documentData: data }
+                          : msg,
+                      ),
+                    );
+                    break;
+
+                  case "tool_call":
                     // Capture source code and language from executeCode tool calls
-                    if (data.toolName === 'executeCode' && data.args) {
-                      setMessages(prev =>
-                        prev.map(msg =>
+                    if (data.toolName === "executeCode" && data.args) {
+                      setMessages((prev) =>
+                        prev.map((msg) =>
                           msg.id === streamingMessageId
                             ? {
-                              ...msg,
-                              codeData: {
-                                type: 'output' as const,
-                                code: '',
-                                sourceCode: data.args.code || '',
-                                language: data.args.language || 'python',
+                                ...msg,
+                                codeData: {
+                                  type: "output" as const,
+                                  code: "",
+                                  sourceCode: data.args.code || "",
+                                  language: data.args.language || "python",
+                                },
                               }
-                            }
-                            : msg
-                        )
-                      )
+                            : msg,
+                        ),
+                      );
                     }
-                    break
+                    break;
 
-                  case 'tool_result': {
+                  case "tool_result": {
                     // Handle code execution and UI generation results
-                    const toolResult = data.result
-                    if (data.toolName === 'executeCode' && toolResult) {
+                    const toolResult = data.result;
+                    if (data.toolName === "executeCode" && toolResult) {
                       const output = toolResult.success
-                        ? (toolResult.output || '(no output)')
-                        : (toolResult.error || 'Execution failed')
+                        ? toolResult.output || "(no output)"
+                        : toolResult.error || "Execution failed";
                       // Merge with existing codeData (which has sourceCode/language from tool_call)
-                      setMessages(prev =>
-                        prev.map(msg =>
+                      setMessages((prev) =>
+                        prev.map((msg) =>
                           msg.id === streamingMessageId
                             ? {
-                              ...msg,
-                              codeData: {
-                                ...msg.codeData,
-                                type: 'output' as const,
-                                code: output,
+                                ...msg,
+                                codeData: {
+                                  ...msg.codeData,
+                                  type: "output" as const,
+                                  code: output,
+                                },
                               }
-                            }
-                            : msg
-                        )
-                      )
-                    } else if (data.toolName === 'generateUI' && toolResult) {
-                      setMessages(prev =>
-                        prev.map(msg =>
+                            : msg,
+                        ),
+                      );
+                    } else if (data.toolName === "generateUI" && toolResult) {
+                      setMessages((prev) =>
+                        prev.map((msg) =>
                           msg.id === streamingMessageId
                             ? {
-                              ...msg,
-                              codeData: {
-                                type: 'ui',
-                                code: toolResult.code || '',
-                                framework: toolResult.framework || 'html',
+                                ...msg,
+                                codeData: {
+                                  type: "ui",
+                                  code: toolResult.code || "",
+                                  framework: toolResult.framework || "html",
+                                },
                               }
-                            }
-                            : msg
-                        )
-                      )
+                            : msg,
+                        ),
+                      );
                     }
-                    break
+                    break;
                   }
 
-                  case 'ai_start':
+                  case "ai_start":
                     // Add streaming message placeholder — read agent directly from event data
-                    setMessages(prev => [...prev, {
-                      id: streamingMessageId,
-                      content: "",
-                      sender: "assistant",
-                      timestamp: new Date(),
-                      isStreaming: true,
-                      agent: data.agent || selectedAgent,
-                      agentName: selectedAgentName || data.agent || selectedAgent,
-                    }])
-                    break
+                    setMessages((prev) => [
+                      ...prev,
+                      {
+                        id: streamingMessageId,
+                        content: "",
+                        sender: "assistant",
+                        timestamp: new Date(),
+                        isStreaming: true,
+                        agent: data.agent || selectedAgent,
+                        agentName:
+                          selectedAgentName || data.agent || selectedAgent,
+                      },
+                    ]);
+                    break;
 
-                  case 'ai_chunk':
+                  case "ai_chunk":
                     if (data.chunk) {
-                      fullContent += data.chunk
-                      setStreamingContent(fullContent)
+                      fullContent += data.chunk;
+                      setStreamingContent(fullContent);
 
                       // Update the streaming message
-                      setMessages(prev =>
-                        prev.map(msg =>
+                      setMessages((prev) =>
+                        prev.map((msg) =>
                           msg.id === streamingMessageId
                             ? { ...msg, content: fullContent }
-                            : msg
-                        )
-                      )
+                            : msg,
+                        ),
+                      );
                     }
-                    break
+                    break;
 
-                  case 'ai_complete':
+                  case "ai_complete":
                     // Finalize the message
-                    setMessages(prev =>
-                      prev.map(msg =>
+                    setMessages((prev) =>
+                      prev.map((msg) =>
                         msg.id === streamingMessageId
                           ? {
-                            ...msg,
-                            id: data.id || streamingMessageId,
-                            content: data.content || fullContent,
-                            isStreaming: false
-                          }
-                          : msg
-                      )
-                    )
-                    break
+                              ...msg,
+                              id: data.id || streamingMessageId,
+                              content: data.content || fullContent,
+                              isStreaming: false,
+                            }
+                          : msg,
+                      ),
+                    );
+                    break;
 
-                  case 'title_generated':
+                  case "title_generated":
                     // Refresh conversations to show new title
-                    loadConversations()
-                    break
+                    loadConversations();
+                    break;
 
-                  case 'done':
-                    setIsStreaming(false)
-                    setStreamingContent("")
-                    setCurrentAgent(null)
+                  case "done":
+                    setIsStreaming(false);
+                    setStreamingContent("");
+                    setCurrentAgent(null);
                     // Refresh conversations list
-                    loadConversations()
-                    break
+                    loadConversations();
+                    break;
 
-                  case 'error':
-                    console.error('Stream error:', data)
-                    setIsStreaming(false)
-                    setStreamingContent("")
-                    break
+                  case "error":
+                    console.error("Stream error:", data);
+                    setIsStreaming(false);
+                    setStreamingContent("");
+                    break;
                 }
               } catch (e) {
                 // Ignore parsing errors for malformed data
-                console.warn('Failed to parse SSE data:', line)
+                console.warn("Failed to parse SSE data:", line);
               }
             }
           }
         }
       }
     } catch (error) {
-      console.error('Error sending message:', error)
-      setIsStreaming(false)
-      setStreamingContent("")
+      console.error("Error sending message:", error);
+      setIsStreaming(false);
+      setStreamingContent("");
     }
-  }, [inputValue, isStreaming, token, currentConversationId])
+  }, [inputValue, isStreaming, token, currentConversationId]);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSendMessage()
+      e.preventDefault();
+      handleSendMessage();
     }
-  }
+  };
 
   const startNewChat = () => {
-    setMessages([])
-    setCurrentConversationId(null)
-    setStreamingContent("")
-    setIsMobileSidebarOpen(false)
-  }
+    setMessages([]);
+    setCurrentConversationId(null);
+    setStreamingContent("");
+    setIsMobileSidebarOpen(false);
+  };
 
   const selectConversation = (conversation: Conversation) => {
-    loadConversationMessages(conversation.id)
-    setIsMobileSidebarOpen(false)
-  }
+    loadConversationMessages(conversation.id);
+    setIsMobileSidebarOpen(false);
+  };
 
   const handleChatWithAgent = (agentId: string) => {
     // Switch to chat view and potentially start a conversation with the agent
-    setCurrentView('chat')
-    console.log(`Starting chat with agent: ${agentId}`)
+    setCurrentView("chat");
+    console.log(`Starting chat with agent: ${agentId}`);
     // In a real app, this would initialize a conversation with the specific agent
-  }
+  };
 
   const handleSwitchToChat = () => {
-    setCurrentView('chat')
-  }
+    setCurrentView("chat");
+  };
 
   return (
     <div
@@ -465,7 +550,10 @@ export default function ChatPage() {
       style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
     >
       {isMobileSidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setIsMobileSidebarOpen(false)} />
+        <div
+          className="fixed inset-0 bg-black/50 z-40 md:hidden"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
       )}
 
       {/* Common Sidebar */}
@@ -478,7 +566,7 @@ export default function ChatPage() {
         startNewChat={startNewChat}
         deleteConversation={deleteConversation}
         onSwitchToChat={handleSwitchToChat}
-        onSwitchToAgents={() => setCurrentView('agents')}
+        onSwitchToAgents={() => setCurrentView("agents")}
       />
 
       {/* Mobile Menu Button */}
@@ -507,12 +595,15 @@ export default function ChatPage() {
       </div>
 
       {/* Main Content Area */}
-      <div className={`flex-1 relative z-10 h-screen flex p-2 sm:p-4 pt-16 md:pt-4 transition-all duration-500 ease-in-out ${!isMobileSidebarOpen ? (isSidebarOpen ? "md:ml-64" : "md:ml-16") : ""
-        }`}>
+      <div
+        className={`flex-1 relative z-10 h-screen flex p-2 sm:p-4 pt-16 md:pt-4 transition-all duration-500 ease-in-out ${
+          !isMobileSidebarOpen ? (isSidebarOpen ? "md:ml-64" : "md:ml-16") : ""
+        }`}
+      >
         <div className="w-full h-full flex flex-col bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 rounded-xl sm:rounded-2xl overflow-hidden shadow-lg">
           {/* Content Area */}
           <div className="flex-1 overflow-hidden">
-            {currentView === 'chat' ? (
+            {currentView === "chat" ? (
               <div className="h-full flex flex-col px-2 sm:px-4 md:px-8 py-4 sm:py-8">
                 {messages.length === 0 && !isLoadingMessages ? (
                   /* Empty State */
@@ -520,13 +611,19 @@ export default function ChatPage() {
                     <div className="text-center space-y-6 sm:space-y-8 w-full max-w-3xl mx-auto">
                       <div className="space-y-4">
                         <div className="inline-flex">
-                          <SynergiLogo width={48} height={48} className="sm:w-16 sm:h-16" />
+                          <SynergiLogo
+                            width={48}
+                            height={48}
+                            className="sm:w-16 sm:h-16"
+                          />
                         </div>
                         <div>
                           <h1 className="text-xl sm:text-2xl font-medium text-gray-800 dark:text-white mb-1">
                             Welcome to Synergi
                           </h1>
-                          <p className="text-sm text-muted-foreground">Multi-Agent AI Assistant</p>
+                          <p className="text-sm text-muted-foreground">
+                            Multi-Agent AI Assistant
+                          </p>
                         </div>
                       </div>
 
@@ -573,7 +670,9 @@ export default function ChatPage() {
                               {message.sender === "user" ? (
                                 <div className="flex justify-end">
                                   <div className="bg-zinc-200 dark:bg-zinc-800 text-gray-900 dark:text-gray-100 px-3 py-2 rounded-lg max-w-[85%] sm:max-w-[70%] text-sm">
-                                    <p className="leading-relaxed">{message.content}</p>
+                                    <p className="leading-relaxed">
+                                      {message.content}
+                                    </p>
                                     <div className="text-xs opacity-60 mt-1">
                                       {message.timestamp.toLocaleTimeString()}
                                     </div>
@@ -588,21 +687,63 @@ export default function ChatPage() {
                                   </Avatar>
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-1">
-                                      <span className="font-medium text-gray-700 dark:text-gray-300 text-xs">Synergi</span>
+                                      <span className="font-medium text-gray-700 dark:text-gray-300 text-xs">
+                                        Synergi
+                                      </span>
                                       {message.agent && (
-                                        <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${message.agent === 'web_search'
-                                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
-                                          : message.agent === 'weather'
-                                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                                            : message.agent === 'code_assistant'
-                                              ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                                              : 'bg-gray-100 text-gray-600 dark:bg-neutral-700 dark:text-gray-300'
-                                          }`}>
-                                          {message.agent === 'web_search' && <Globe className="w-2.5 h-2.5" />}
-                                          {message.agent === 'weather' && <CloudSun className="w-2.5 h-2.5" />}
-                                          {message.agent === 'code_assistant' && <Code className="w-2.5 h-2.5" />}
-                                          {message.agent === 'general' && <Bot className="w-2.5 h-2.5" />}
-                                          {message.agentName || (message.agent === 'web_search' ? 'Web Search' : message.agent === 'weather' ? 'Weather' : message.agent === 'code_assistant' ? 'Code Assistant' : 'General')}
+                                        <span
+                                          className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                                            message.agent === "web_search"
+                                              ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                                              : message.agent === "weather"
+                                                ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                                                : message.agent ===
+                                                    "code_assistant"
+                                                  ? "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
+                                                  : message.agent ===
+                                                      "financial"
+                                                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                                    : message.agent ===
+                                                        "document_generate"
+                                                      ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
+                                                      : "bg-gray-100 text-gray-600 dark:bg-neutral-700 dark:text-gray-300"
+                                          }`}
+                                        >
+                                          {message.agent === "web_search" && (
+                                            <Globe className="w-2.5 h-2.5" />
+                                          )}
+                                          {message.agent === "weather" && (
+                                            <CloudSun className="w-2.5 h-2.5" />
+                                          )}
+                                          {message.agent ===
+                                            "code_assistant" && (
+                                            <Code className="w-2.5 h-2.5" />
+                                          )}
+                                          {message.agent === "financial" && (
+                                            <LineChart className="w-2.5 h-2.5" />
+                                          )}
+                                          {message.agent ===
+                                            "document_generate" && (
+                                            <FileText className="w-2.5 h-2.5" />
+                                          )}
+                                          {message.agent === "general" && (
+                                            <Bot className="w-2.5 h-2.5" />
+                                          )}
+                                          {message.agentName ||
+                                            (message.agent === "web_search"
+                                              ? "Web Search"
+                                              : message.agent === "weather"
+                                                ? "Weather"
+                                                : message.agent ===
+                                                    "code_assistant"
+                                                  ? "Code Assistant"
+                                                  : message.agent ===
+                                                      "financial"
+                                                    ? "Financial Agent"
+                                                    : message.agent ===
+                                                        "document_generate"
+                                                      ? "Document Generator"
+                                                      : "General")}
                                         </span>
                                       )}
                                       <span className="text-xs text-muted-foreground">
@@ -611,15 +752,116 @@ export default function ChatPage() {
                                       {message.isStreaming && (
                                         <div className="flex items-center gap-1">
                                           <div className="w-1 h-1 bg-teal-500 rounded-full animate-pulse" />
-                                          <div className="w-1 h-1 bg-teal-500 rounded-full animate-pulse" style={{ animationDelay: "0.2s" }} />
-                                          <div className="w-1 h-1 bg-teal-500 rounded-full animate-pulse" style={{ animationDelay: "0.4s" }} />
+                                          <div
+                                            className="w-1 h-1 bg-teal-500 rounded-full animate-pulse"
+                                            style={{ animationDelay: "0.2s" }}
+                                          />
+                                          <div
+                                            className="w-1 h-1 bg-teal-500 rounded-full animate-pulse"
+                                            style={{ animationDelay: "0.4s" }}
+                                          />
                                         </div>
                                       )}
                                     </div>
                                     <div className="text-gray-800 dark:text-gray-200 text-sm leading-relaxed">
                                       {message.weatherData && (
                                         <div className="mb-3">
-                                          <WeatherCard data={message.weatherData} />
+                                          <WeatherCard
+                                            data={message.weatherData}
+                                          />
+                                        </div>
+                                      )}
+                                      {message.financialData?.stockData && (
+                                        <div className="mb-3 max-w-full overflow-hidden">
+                                          <div
+                                            className={
+                                              Array.isArray(
+                                                message.financialData.stockData,
+                                              ) &&
+                                              message.financialData.stockData
+                                                .length > 1
+                                                ? "grid grid-cols-1 lg:grid-cols-2 gap-3"
+                                                : ""
+                                            }
+                                          >
+                                            {(Array.isArray(
+                                              message.financialData.stockData,
+                                            )
+                                              ? message.financialData.stockData
+                                              : [
+                                                  message.financialData
+                                                    .stockData,
+                                                ]
+                                            ).map(
+                                              (stock: any, index: number) => (
+                                                <StockCard
+                                                  key={
+                                                    stock?.ticker ||
+                                                    stock?.companyName ||
+                                                    index
+                                                  }
+                                                  stockData={stock}
+                                                  verdict={
+                                                    message.financialData
+                                                      .verdict
+                                                  }
+                                                  news={
+                                                    message.financialData
+                                                      .news || []
+                                                  }
+                                                  isWatched={isInWatchlist(
+                                                    stock?.ticker,
+                                                  )}
+                                                  onAddWatchlist={(
+                                                    stock: any,
+                                                  ) => {
+                                                    if (!stock?.ticker) return;
+                                                    addToWatchlist(
+                                                      stock.ticker,
+                                                      stock.companyName ||
+                                                        stock.ticker,
+                                                      stock.currentPrice ??
+                                                        stock.price ??
+                                                        null,
+                                                    );
+                                                    setMessages((prev) => [
+                                                      ...prev,
+                                                    ]);
+                                                  }}
+                                                  onCompare={(stock: any) => {
+                                                    const ticker =
+                                                      stock?.ticker;
+                                                    if (!ticker) return;
+                                                    setInputValue(
+                                                      `Compare ${ticker} vs `,
+                                                    );
+                                                  }}
+                                                  onFullAnalysis={(
+                                                    stock: any,
+                                                    options?: {
+                                                      mode?: string;
+                                                    },
+                                                  ) => {
+                                                    const ticker =
+                                                      stock?.ticker;
+                                                    if (!ticker) return;
+                                                    if (
+                                                      options?.mode ===
+                                                      "stress_test"
+                                                    ) {
+                                                      setInputValue(
+                                                        `Crash stress test for ${ticker}`,
+                                                      );
+                                                    } else {
+                                                      setInputValue(
+                                                        `Full analysis of ${ticker}`,
+                                                      );
+                                                    }
+                                                  }}
+                                                />
+                                              ),
+                                            )}
+                                          </div>
                                         </div>
                                       )}
                                       {message.codeData && (
@@ -627,23 +869,44 @@ export default function ChatPage() {
                                           <CodePreview
                                             code={message.codeData.code}
                                             type={message.codeData.type}
-                                            framework={message.codeData.framework}
-                                            sourceCode={message.codeData.sourceCode}
+                                            framework={
+                                              message.codeData.framework
+                                            }
+                                            sourceCode={
+                                              message.codeData.sourceCode
+                                            }
                                             language={message.codeData.language}
                                           />
                                         </div>
                                       )}
-                                      {message.sender === "assistant" && (message.content || message.isStreaming) ? (
+                                      {message.documentData && (
+                                        <div className="mb-3 max-w-full overflow-hidden">
+                                          <DocumentCard
+                                            documentData={message.documentData}
+                                          />
+                                        </div>
+                                      )}
+                                      {message.sender === "assistant" &&
+                                      (message.content ||
+                                        message.isStreaming) ? (
                                         <AdvancedStreamingText
                                           content={message.content}
-                                          isStreaming={message.isStreaming || false}
+                                          isStreaming={
+                                            message.isStreaming || false
+                                          }
                                           className="text-sm"
                                         />
-                                      ) : !message.weatherData && !message.codeData ? (
+                                      ) : !message.weatherData &&
+                                        !message.codeData &&
+                                        !message.financialData?.stockData &&
+                                        !message.documentData ? (
                                         <div
                                           className="whitespace-pre-wrap"
                                           dangerouslySetInnerHTML={{
-                                            __html: message.content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                            __html: message.content.replace(
+                                              /\*\*(.*?)\*\*/g,
+                                              "<strong>$1</strong>",
+                                            ),
                                           }}
                                         />
                                       ) : null}
@@ -666,7 +929,11 @@ export default function ChatPage() {
                           value={inputValue}
                           onChange={(e) => setInputValue(e.target.value)}
                           onKeyDown={handleKeyPress}
-                          placeholder={isStreaming ? "Synergi is responding..." : "Type your message..."}
+                          placeholder={
+                            isStreaming
+                              ? "Synergi is responding..."
+                              : "Type your message..."
+                          }
                           className="[grid-area:1/1] w-full pt-2 sm:pt-3 pr-8 sm:pr-10 pb-2 sm:pb-3 text-sm rounded-lg focus:outline-none text-gray-900 dark:text-white resize-none min-h-[2.5rem] sm:min-h-[3rem] max-h-[5rem] sm:max-h-[6rem] overflow-y-auto placeholder:text-gray-500 dark:placeholder:text-gray-400 transition-colors bg-gray-50 dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 focus:border-teal-500 dark:focus:border-teal-400"
                           disabled={isStreaming}
                         />
@@ -697,5 +964,5 @@ export default function ChatPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }
